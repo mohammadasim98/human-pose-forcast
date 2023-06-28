@@ -78,7 +78,7 @@ def write_sequence(seq_path):
         "extrinsics": cam_exts, 
         "trans": trans, 
         "jointPositions": jointPositions, 
-        "pmask": pmask, \
+        "pmask": pmask, 
         "height": img.shape[0], 
         "width": img.shape[1]}
     # print("Root Joint Shape: ", root_joints.shape)
@@ -101,12 +101,7 @@ if __name__ == '__main__':
     with multiprocessing.Pool() as pool:
         # call the function for each item in parallel
         pool.map(write_sequence, seq_paths)
-    # for sequence_folder in sequence_folders:
-    #     seq_folder = sequence_folder
-    #     sequence_files = os.listdir(os.path.join(seq_dir, seq_folder)) 
-           
-    #     # for sequence_file in sequence_files:
-    #     #     write_sequence(seq_dir, sequence_file, sequence_folder, img_dir)
+
         
                 
                 

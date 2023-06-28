@@ -130,7 +130,7 @@ def sample(id, poses, img_paths, dir, imsize=(480, 480, 3), psize=None ):
 
     Args:
         id (int): Frame id.
-        poses (numpy.ndarray): A (np, nf, 3, 18) pose array with np ad the number of people, nf as the number of frames.  
+        poses (numpy.ndarray): A (np, nf, 18, 3) pose array with np ad the number of people, nf as the number of frames.  
         img_paths (list): A list of image paths belonging to a particular sequence
         dir (str): Image directory
         imsize (tuple, optional): Final padded and resized image shape. Defaults to (480, 480, 3).
@@ -144,7 +144,7 @@ def sample(id, poses, img_paths, dir, imsize=(480, 480, 3), psize=None ):
         numpy.ndarray: A (np, 18, 3) rescaled absolute pose with np number of people.
     """
     pose = (poses[:, id, :, :]).astype(int)
-    pose = np.transpose(pose, (0, 2, 1))
+    # pose = np.transpose(pose, (0, 2, 1))
 
     img_path = os.path.join(dir, img_paths[id])
     img = cv2.imread(img_path)

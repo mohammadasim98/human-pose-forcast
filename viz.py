@@ -32,18 +32,18 @@ def annotate(img, pose=None, root_joint=None, world_origin=None):
   
 if __name__ == "__main__":
     seq_name = "courtyard_golf_00"
-    seq_dir = "D:\Saarland\HLCV\project\data\\3DPW\sequenceFilesTransformed"
-    img_dir = "D:\Saarland\HLCV\project\data\\3DPW\imageFiles"
+    seq_dir = "D:\Saarland\HLCV\project\data\\3DPWPreprocessed\sequenceFiles"
+    img_dir = "D:\Saarland\HLCV\project\data\\3DPWPreprocessed\imageFiles"
     folder = "train"
     seq_path = os.path.join(seq_dir, folder, seq_name + ".npz")
     seq = np.load(seq_path, allow_pickle=True)
     
-    ids = seq["img_frame_ids"]
-    poses = seq["poses2d"]
+    poses = seq["abs_poses"]
+    
     trans = seq["trans"]
     jointPositions = seq["jointPositions"]
-    cam_ext = seq["cam_poses"]
-    cam_int = seq["cam_intrinsics"]
+    cam_ext = seq["extrinsics"]
+    cam_int = seq["intrinsics"]
     img_dir = os.path.join(img_dir, seq_name)    
     img_names = os.listdir(img_dir)
 
