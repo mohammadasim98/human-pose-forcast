@@ -9,21 +9,26 @@ from transformations import world2camera_transform
 
 
 
-def display(img, pmask, root_joint, pose):
-    for human_id in range(pose.shape[0]):
-        cv2.putText(img, "ROOT", root_joint[human_id, :2].astype(int) + np.array([0, 20]), cv2.FONT_HERSHEY_SIMPLEX,\
-        1, [0, 255, 0], 5, cv2.LINE_AA)
+def annotate(img, pose=None, root_joint=None, world_origin=None):
     
-        for k in range(1, pose.shape[1]):
-            cv2.putText(img, str(k), pose[human_id,  k, :2] + np.array([0, 20]), cv2.FONT_HERSHEY_SIMPLEX,\
-                0.7, [0, 0, 255], 2, cv2.LINE_AA)
-            cv2.circle(img, pose[human_id,  k, :2].tolist(), 5, [255, 0, 0], 5)
-            
-
-
-    # print(img.shape)
-    cv2.imshow(f"Padded Resized Image", img)
-    cv2.imshow(f"Padding Mask", pmask)
+    for human_id in range(pose.shape[0]):
+        
+        if root_joint is not None:
+            cv2.putText(img, "ROOT", root_joint[human_id, :2].astype(int) + np.array([0, 20]), \
+                cv2.FONT_HERSHEY_SIMPLEX, 1, [0, 255, 0], 5, cv2.LINE_AA)
+        
+        if pose is not None:
+        
+            for k in range(1, pose.shape[1]):
+                cv2.putText(img, str(k), pose[human_id,  k, :2] + np.array([0, 20]), \
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, [0, 0, 255], 2, cv2.LINE_AA)
+                
+                cv2.circle(img, pose[human_id,  k, :2].tolist(), 5, [255, 0, 0], 5)
+                
+    if world_origin is not None:
+        cv2.circle(img, world_origin[0, :2].tolist(), 5, [0, 0, 255], 5)
+        
+    return img
   
 if __name__ == "__main__":
     seq_name = "courtyard_golf_00"
@@ -66,13 +71,13 @@ if __name__ == "__main__":
         # print("Padding Mask Shape: ", pmask.shape)
         # print("Padded Resized Image Shape: ", img.shape)
         # print("==========================================")
-        rescaled = rescale(transformed_world_origin, src_shape=(1920, 1920, 3), target_shape=(480, 480, 3))
-        rescaled = rescaled.astype(int)
-        cv2.circle(img, rescaled[0, :2].tolist(), 5, [0, 0, 255], 5)
-        display(img, pmask, root_joint, abs_pose)
-        # print(poses.shape)
+        rescaled_world_origin = rescale(transformed_world_origin, src_shape=(1920, 1920, 3), target_shape=(480, 480, 3))
+        rescaled_world_origin = rescaled_world_origin.astype(int)
         
-        # print(rescaled)
+        img = annotate(img, abs_pose, root_joint, rescaled_world_origin)
+        
+        cv2.imshow("Padded Resized Image", img)
+        cv2.imshow("Padding Mask", pmask)
         if cv2.waitKey(25) & 0xFF == ord('q'):
             break    
     

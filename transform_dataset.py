@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 import json
 from utils import sample, cvt_pkl2npz
-from viz_dataset import display
+from viz import display
 
 
 
