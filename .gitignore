@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# To not push data to repo
+
+data/*
+
 # C extensions
 *.so
 
