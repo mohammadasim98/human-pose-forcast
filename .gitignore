@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# remove vs code meta data
+.vscode/*
+
 # To not push data to repo
 
 data/*
