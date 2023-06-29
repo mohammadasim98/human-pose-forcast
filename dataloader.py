@@ -6,6 +6,9 @@ import glob
 import cv2
 
 class Dataset(object):
+    """Base Dataset Class
+    """
+    
     def __getitem__(self, index):
         raise NotImplementedError
 

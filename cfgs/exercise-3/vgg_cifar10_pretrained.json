@@ -1,0 +1,79 @@
+{
+    "name": "CIFAR10_VGG",
+    "n_gpu": 1,
+
+    "arch": {
+        "type": "VGG11_bn",
+        "args": {
+            "layer_config": [512, 256],
+            "num_classes": 10,
+            "activation": {
+                "type": "ReLU",
+                "args": {}
+            },
+            "norm_layer": {
+                "type": "BatchNorm1d"
+            },
+            "fine_tune": true,
+            "weigths": "DEFAULT"
+        }
+    },
+    "data_module": {
+        "type": "CIFAR10DataModule",
+        "args":{
+            "data_dir": "data/exercise-2",
+            "batch_size": 200,
+            "shuffle": true,
+            "heldout_split": 0.1,
+            "num_workers": 6,
+            "preset_name": "CIFAR10_VGG",
+            "training": true
+        }
+    },
+    "optimizer": {
+        "type": "Adam",
+        "args":{
+            "lr": 1e-3,
+            "weight_decay": 1e-5
+        }
+    },
+    "loss": "cce_loss",
+    "metrics": [
+        {
+            "type": "TopKAccuracy",
+            "args":{
+                "k": 1
+            }
+        },
+        {
+            "type": "TopKAccuracy",
+            "args":{
+                "k": 3
+            }
+        }
+    ],
+    "lr_scheduler": {
+        "type": "ExponentialLR",
+        "args": {
+            "gamma": 0.99,
+            "last_epoch": -1,
+            "verbose": false
+        }
+    },
+    "trainer": {
+        "type": "VGGTrainer",
+        "args": {},
+
+        "epochs": 15,
+        
+        "save_dir": "saved",
+        "save_period": 10,
+        "eval_period": 1,
+        "verbosity": 2,
+
+        "monitor": "max eval_top1",
+        "early_stop": 4
+    },
+    "tensorboard": false,
+    "wandb": true
+}

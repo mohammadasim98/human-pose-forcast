@@ -1,0 +1,65 @@
+{
+    "name": "CIFAR10_MLP",
+    "n_gpu": 1,
+
+    "arch": {
+        "type": "MultiLayerPerceptron",
+        "args": {
+            "input_size": 3072,
+            "hidden_layers": [50],
+            "num_classes": 10,
+            "activation": {
+                "type": "ReLU",
+                "args": {}
+            },
+            "drop_prob": 0.1
+        }
+    },
+    "data_loader": {
+        "type": "CIFAR10DataLoader",
+        "args":{
+            "data_dir": "../../data/exercise-2/",
+            "batch_size": 128,
+            "shuffle": true,
+            "validation_split": 0.1,
+            "num_workers": 6
+        }
+    },
+    "optimizer": {
+        "type": "Adam",
+        "args":{
+            "lr": 0.001,
+            "weight_decay": 0.001,
+            "amsgrad": true
+        }
+    },
+    "loss": "cce_loss",
+    "metrics": [
+        {
+            "type": "TopKAccuracy",
+            "args":{
+                "k": 1
+            }
+        },
+        {
+            "type": "TopKAccuracy",
+            "args":{
+                "k": 5
+            }
+        }
+    ],
+    "trainer": {
+        "type": "MLPTrainer",
+        "args": {},
+
+        "epochs": 20,
+        
+        "save_dir": "../../saved/",
+        "save_period": 10,
+        "eval_period": 5,
+        "verbosity": 2
+
+    },
+    "tensorboard": true
+
+}
