@@ -1,2 +1,2 @@
-# Human Pose Forecasting in the Wild
+# Human Pose Prediction in the Wild
 
