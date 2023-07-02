@@ -4,21 +4,17 @@ import sys
 import torch
 
 import numpy as np
-from copy import deepcopy
-from typing import Callable, List, Dict, Union, Any
 from tfrecord.torch.dataset import TFRecordDataset
 
 from os.path import join as ospj
 sys.path.append(ospj(".", 'src'))
 
-from utils.viz import annotate
-from utils.transforms import cvt_absolute_pose
 
 
 class ThreeDPWTFRecordDataset():
     """ General dataset class for tfrecord based files.
     """
-    def __init__(self, data_path: str, n_scenes=5, person_id=0, history_window: int=5, 
+    def __init__(self, data_path: str, n_scenes=5, person_id=0, subsample: int=1, history_window: int=5, 
                  future_window: int=5, batch_size: int=10, shuffle: bool=False, n_workers: int=0, 
                  prefetch_factor: int=None) -> None:  
         """Wrapper on top of tfrecord.torch.dataset.TFRecordDataset
@@ -27,6 +23,7 @@ class ThreeDPWTFRecordDataset():
             data_path (str): Path to the <name>.tfrecord file.
             n_scenes (int, optional): Number of scenes. Defaults to 5.
             person_id (int, optional): Index for a person in case of multiple. Use to ensure single person scenerio. Defaults to 0.
+            subsample (int, optional): Subsampling factor. E.g. if 2, then take every 2nd frame. Defaults to 1.
             history_window (int, optional): A window representing the maximum context history. Defaults to 5.
             future_window (int, optional): A window for maximum peek into the future. Defaults to 5.
             batch_size (int, optional): A batch of windowed representation of history and future data. Defaults to 10.
@@ -53,6 +50,7 @@ class ThreeDPWTFRecordDataset():
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.prefetch_factor = prefetch_factor
+        self.subsample = subsample
         
         self.n_scenes = n_scenes
         self.n_workers = n_workers
@@ -138,7 +136,7 @@ class ThreeDPWTFRecordDataset():
         future = []
         
         # Convert the complete data into windowed representation
-        for i in range(num):
+        for i in range(0, num, self.subsample):
             start = i
             end = self.history_window + start
             history.append([image_strings[start:end], norm_pose[person_id, start:end, :, :], root_joint[person_id, start:end, :], mask])
@@ -172,7 +170,7 @@ class ThreeDPWTFRecordDataset():
         
     
     
-    def __getitem__(self, index) -> Any:
+    def __getitem__(self, index):
         """ Get a single item representing a windowed history and future
 
         Args:
