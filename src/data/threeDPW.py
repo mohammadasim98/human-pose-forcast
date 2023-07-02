@@ -111,7 +111,7 @@ class ThreeDPWTFRecordDataset():
     
     def _window(self, data):
         """ Generate a rolling window for history and future sequences 
-            based on the history and future window size for a single scene.
+            based on the history and future window size, and the subsampling factor for a single scene.
 
         Args:
             data (typle(int, list(str), numpy.ndarray, numpy.ndarray, numpy.ndarray)): 
@@ -125,9 +125,13 @@ class ThreeDPWTFRecordDataset():
         """
         # Get complete data for a single scene
         frames, image_strings, mask, norm_pose, root_joint = data
-        
+        sub_frames = frames // self.subsample
+        idx = np.linspace(0, frames-1, sub_frames).astype(int)
+        image_strings = image_strings[idx]
+        norm_pose = norm_pose[:, idx, :, :]
+        root_joint = root_joint[:, idx, :]
         # Define number of windowed data for a single scene
-        num = frames - self.history_window - self.future_window + 1
+        num = sub_frames - self.history_window - self.future_window + 1
         
         # Make sure in case of 1 visible person, the id does not exceed it.
         person_id = self.person_id if self.person_id < norm_pose.shape[0] else norm_pose.shape[0] - 1   
@@ -136,7 +140,7 @@ class ThreeDPWTFRecordDataset():
         future = []
         
         # Convert the complete data into windowed representation
-        for i in range(0, num, self.subsample):
+        for i in range(0, num):
             start = i
             end = self.history_window + start
             history.append([image_strings[start:end], norm_pose[person_id, start:end, :, :], root_joint[person_id, start:end, :], mask])
