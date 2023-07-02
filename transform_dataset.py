@@ -98,9 +98,9 @@ if __name__ == '__main__':
     img_dir = os.path.join(datasetDir, "imageFiles")
     
     seq_paths = glob(os.path.join(seq_dir, "*", "*.npz"), )
-    with multiprocessing.Pool() as pool:
-        # call the function for each item in parallel
-        pool.map(write_sequence, seq_paths)
+    # with multiprocessing.Pool() as pool:
+    #     # call the function for each item in parallel
+    #     pool.map(write_sequence, seq_paths)
 
         
                 

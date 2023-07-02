@@ -3,11 +3,12 @@ import pickle as pkl
 import numpy as np
 import cv2
 import json
-from utils import sample, cvt_pkl2npz
-from viz_dataset import display
+from transforms import sample
 from multiprocessing import Process
 import multiprocessing
 from glob import glob
+import ffmpeg
+import tfrecord
 
 def write_sequence(seq_path):
     seq_path_splitted = seq_path.split("\\")
@@ -51,19 +52,7 @@ def write_sequence(seq_path):
         norm_poses.append(norm_pose.tolist())
         abs_poses.append(abs_pose.tolist())
         
-        # print("Root Joint Shape: ", root_joint.shape)
-        # print("Normalized Pose Shape: ", norm_pose.shape)
-        # print("Absolute Pose Shape: ", abs_pose.shape)
-        # print("Padding Mask Shape: ", pmask.shape)
-        # print("Padded Resized Image Shape: ", img.shape)
-        # print("==========================================")
-        
-    
 
-        # display(img, pmask, root_joint, abs_pose)
-            
-        # if cv2.waitKey(25) & 0xFF == ord('q'):
-        #     break  
     cv2.imwrite(new_mask_path, pmask*255)
 
     norm_poses = np.transpose(np.array(norm_poses), (1, 0, 2, 3))
@@ -81,15 +70,10 @@ def write_sequence(seq_path):
         "pmask": pmask, 
         "height": img.shape[0], 
         "width": img.shape[1]}
-    # print("Root Joint Shape: ", root_joints.shape)
-    # print("Normalized Pose Shape: ", norm_poses.shape)
-    # print("Absolute Pose Shape: ", abs_poses.shape)
+
     np.savez(os.path.join(transformDir, "sequenceFiles", seq_path_splitted[4], sequence_file + ".npz"), **p)
 
-
-if __name__ == '__main__':
-    global img_dir, seq_folder, seq_dir
-    
+def preprocess():
     datasetDir = os.path.join("..", "..", 'data', '3DPW')
     transformDir = os.path.join("..", "..", 'data', '3DPWPreprocessed')
     
@@ -102,8 +86,23 @@ if __name__ == '__main__':
         # call the function for each item in parallel
         pool.map(write_sequence, seq_paths)
 
-        
-                
-                
-    cv2.destroyAllWindows()
-   
+def cvt_images2video():
+    cwd = os.getcwd() 
+    datasetDir = os.path.join(cwd, 'data', '3DPWPreprocessed') 
+    sequence_path = os.path.join(datasetDir, "imageFiles")
+    sequence_folders = os.listdir(sequence_path)
+    sequence_list = [os.path.join(sequence_path, folder, "image_%05d.jpg") for folder in sequence_folders]
+    
+    out_path = os.path.join(datasetDir, "videos")
+    for path, folder in zip(sequence_list, sequence_folders):
+        (
+            ffmpeg
+            .input(path, framerate=30)
+            .output(f'{os.path.join(out_path, folder)}.mp4')
+            .run()
+        )
+
+
+if __name__ == '__main__':
+    
+    pass

@@ -31,7 +31,7 @@ def annotate(img, pose=None, root_joint=None, world_origin=None):
     return img
   
 if __name__ == "__main__":
-    seq_name = "courtyard_golf_00"
+    seq_name = "courtyard_box_00"
     seq_dir = "D:\Saarland\HLCV\project\data\\3DPWPreprocessed\sequenceFiles"
     img_dir = "D:\Saarland\HLCV\project\data\\3DPWPreprocessed\imageFiles"
     folder = "train"
@@ -57,8 +57,6 @@ if __name__ == "__main__":
         t = cam_ext[id][0:3,3]
         f = np.array([cam_int[0,0],cam_int[1,1]])
         c = cam_int[:,2]
-
-
         k = np.zeros(5) 
         camera_mtx = np.array([[f[0], 0, c[0]],[0., f[1], c[1]],[0.,0.,1.]], dtype=np.float64)
         transformed_world_origin, _ = cv2.projectPoints(np.array([[0.0, 0.0, 0.0]]), rt, t, camera_mtx, k)

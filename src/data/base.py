@@ -4,7 +4,7 @@ from torch.utils.data import Subset
 from copy import deepcopy
 
 
-class BaseDataset:
+class BaseLoader:
     """
     Base class for all data loaders
     """

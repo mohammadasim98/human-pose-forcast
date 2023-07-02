@@ -7,7 +7,7 @@ from builtins import range
 from math import sqrt, ceil
 
 
-from transforms import sample, rescale
+from .transforms import sample, rescale
 
 def visualize_grid(Xs, ubound=255.0, padding=1):
     """
@@ -78,7 +78,7 @@ def vis_nn(rows):
     return G
 
 
-def annotate(img, pose=None, root_joint=None, world_origin=None):
+def annotate(img, pose=None, root_joint=None, world_origin=None, color=(255, 0, 0)):
     """Annotate the given image with absolute pose-keypoints given root-relative poses 
 
     Args:
@@ -113,7 +113,7 @@ def annotate(img, pose=None, root_joint=None, world_origin=None):
                 cv2.putText(img, str(k), pose[human_id,  k, :2] + np.array([0, 20]), \
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, [0, 0, 255], 2, cv2.LINE_AA)
                 
-                cv2.circle(img, pose[human_id,  k, :2].tolist(), 5, [255, 0, 0], 5)
+                cv2.circle(img, pose[human_id,  k, :2].tolist(), 5, color, 5)
 
     # Probably useless
     if world_origin is not None:
@@ -123,7 +123,7 @@ def annotate(img, pose=None, root_joint=None, world_origin=None):
 
 
 if __name__ == "__main__":
-    seq_name = "courtyard_golf_00"
+    seq_name = "courtyard_arguing_00"
     seq_dir = "D:\Saarland\HLCV\project\data\\3DPWPreprocessed\sequenceFiles"
     img_dir = "D:\Saarland\HLCV\project\data\\3DPWPreprocessed\imageFiles"
     folder = "train"
@@ -136,6 +136,7 @@ if __name__ == "__main__":
     jointPositions = seq["jointPositions"]
     cam_ext = seq["extrinsics"]
     cam_int = seq["intrinsics"]
+    pmask = seq["pmask"]
     img_dir = os.path.join(img_dir, seq_name)    
     img_names = os.listdir(img_dir)
 
@@ -144,7 +145,7 @@ if __name__ == "__main__":
     print(cam_ext.shape)
     print(poses.shape)
     for id in range(poses.shape[1]):
-        img, pmask, root_joint, norm_pose, abs_pose = sample(id, poses, img_names, img_dir,  imsize=(480, 480, 3))
+        img, _, root_joint, norm_pose, abs_pose = sample(id, poses, img_names, img_dir,  imsize=(384, 384, 3))
         rt = cv2.Rodrigues(cam_ext[id][0:3,0:3])[0].ravel()
         t = cam_ext[id][0:3,3]
         f = np.array([cam_int[0,0],cam_int[1,1]])
@@ -166,8 +167,8 @@ if __name__ == "__main__":
         rescaled_world_origin = rescale(transformed_world_origin, src_shape=(1920, 1920, 3), target_shape=(480, 480, 3))
         rescaled_world_origin = rescaled_world_origin.astype(int)
         
-        img = annotate(img, abs_pose, root_joint, rescaled_world_origin)
-        
+        img = annotate(img, poses[:, id, :, :], root_joint, rescaled_world_origin)
+        print(pmask.dtype)
         cv2.imshow("Padded Resized Image", img)
         cv2.imshow("Padding Mask", pmask)
         if cv2.waitKey(25) & 0xFF == ord('q'):
