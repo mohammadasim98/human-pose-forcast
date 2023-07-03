@@ -14,9 +14,19 @@ sys.path.append(ospj(".", 'src'))
 class ThreeDPWTFRecordDataset():
     """ General dataset class for tfrecord based files.
     """
-    def __init__(self, data_path: str, n_scenes=5, person_id=0, subsample: int=1, history_window: int=5, 
-                 future_window: int=5, batch_size: int=10, shuffle: bool=False, n_workers: int=0, 
-                 prefetch_factor: int=None) -> None:  
+    def __init__(
+        self, 
+        data_path: str, 
+        n_scenes=5, 
+        person_id=0, 
+        subsample: int=1, 
+        history_window: int=5, 
+        future_window: int=5, 
+        batch_size: int=10, 
+        shuffle: bool=False, 
+        n_workers: int=0, 
+        prefetch_factor: int=None
+        ) -> None:  
         """Wrapper on top of tfrecord.torch.dataset.TFRecordDataset
 
         Args:

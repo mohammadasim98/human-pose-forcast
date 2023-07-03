@@ -110,42 +110,29 @@ class BaseTrainer:
         self.not_improved_count = 0
         prev_metric_value = 999999999999999 if self.monitor_mode == "min" else 0        
         if self.wandb_enabled: wandb.watch(self.model, self.criterion, log='all')
-        losses = {"train": [], "val": []}
+        states = {"loss": {"train": [], "val": []}}
         for epoch in range(self.start_epoch, self.epochs + 1):
             self.current_epoch = epoch
             train_result = self._train_epoch()
-            losses["train"].append(train_result["loss"])
+            states["loss"]["train"].append(train_result["loss"])
             # save logged informations into log dict
             log = {'epoch': self.current_epoch}
             log.update(train_result)
 
             if self._do_evaluate():
                 eval_result = self.evaluate()
-                losses["val"].append(eval_result["loss"])
+                states["loss"]["val"].append(eval_result["loss"])
                 # save eval information to the log dict as well
                 log.update({f'eval_{key}': value for key, value in eval_result.items()})
                 if self.wandb_enabled:
                     wandb.log(log)
-                if result.get('top1') > self.best_top1:
-                    self.best_top1 = result.get('top1')
-                    path = os.path.join(self.checkpoint_dir, f'best_val_model_E{self.current_epoch}')
-                    self.save_model(path)
-                    self.logger.info(f'eval_top1 imporved, saved model to {path}'
-                                     f' with top1 accuracy {result.get("top1")}')
+
 
 
             if self.monitor_mode != 'off' : # Then there is a metric to monitor
                 if self.monitor_metric in log: # Then we have measured it in this epoch
 
-                    ############################################################################################
-                    # TODO: Q2.b: Use the dictionaries above to see if this is the best epoch based on self.monitor_metric.#
-                    # If so, use self.save_model() to save the best model checkpoint.                          #
-                    # Don't forget to pre-pend self.checkpoint_dir to the path argument.                        #
-                    # We also recommend printing the epoch number so that later from the logs.                 #
-                    ############################################################################################
-
-                    # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-                    # check whether model performance improved or not, according to specified metric(monitor_metric)
+                    
                     metric_value = log[self.monitor_metric]
                     if self.monitor_mode == "min" and metric_value < prev_metric_value:
                         self.not_improved_count = 0
@@ -158,13 +145,7 @@ class BaseTrainer:
                         path = os.path.join(self.checkpoint_dir, f'E{epoch}_best_val_model.pth')
                         self.save_model(path=path)                        
                         prev_metric_value = metric_value
-                    # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
-
-                    ############################################################################################
-                    # TODO: Q2.c: Based self.monitor_metric and whether we have had improvements in                #
-                    # the last self.early_stop steps, see if you should break the training loop.               #
-                    ############################################################################################
-                    # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+                    
                     else:
                         if self.early_stop:
                             self.not_improved_count += 1
@@ -172,7 +153,6 @@ class BaseTrainer:
                                 self.logger.info(f"No improvement so far... breaking...goodby")
                                 break
                             self.logger.info(f"Patience running out... {self.not_improved_count}")           
-                    # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
 
                 else:
@@ -193,7 +173,7 @@ class BaseTrainer:
         # Always save the last model
         path = os.path.join(self.checkpoint_dir, f'last_model.pth')
         self.save_model(path=path)
-        return losses
+        return states
 
     def _do_evaluate(self):
         """

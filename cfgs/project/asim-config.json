@@ -1,0 +1,125 @@
+{
+    "name": "CIFAR10_MLP",
+    "n_gpu": 1,
+
+    "arch": {
+        "type": "HumanPosePredictorModel",
+        "args": {
+            "history_window": 15,
+            "future_window": 15,
+            "encoder": {
+                "pose": {
+                    "num_layers": 2,
+                    "num_heads": 12,
+                    "hidden_dim": 256,
+                    "mlp_dim": 512,
+                    "dropout": 0.0,
+                    "batch_first": true
+                },
+                "image": {
+                    "image_size": 224, 
+                    "patch_size": 16,  
+                    "num_layers": 12, 
+                    "num_heads": 12,  
+                    "hidden_dim": 768,
+                    "mlp_dim": 3072,
+                    "dropout": 0.0,
+                    "batch_first": true
+                },
+                "temporal": {
+                    "num_layers": 2,
+                    "num_heads": 12,
+                    "hidden_dim": 256,
+                    "mlp_dim": 512,
+                    "dropout": 0.0,
+                    "batch_first": true
+                }
+            },
+            "decoder": {
+                "pose": {
+                    "num_layers": 2,
+                    "num_heads": 12,
+                    "hidden_dim": 256,
+                    "mlp_dim": 512,
+                    "dropout": 0.0,
+                    "batch_first": true
+                }
+            },
+            "activation": {
+                "type": "ReLU",
+                "args": {}
+            }
+        }
+    },
+    "train_loader": {
+        "type": "ThreeDPWTFRecordDataset",
+        "args":{
+            "data_path": "../data/3DPWPreprocessedTFRecord/train.tfrecord", 
+            "n_scenes": 5, 
+            "person_id": 0, 
+            "subsample": 1, 
+            "history_window": 15, 
+            "future_window": 15, 
+            "batch_size": 32, 
+            "shuffle": false, 
+            "n_workers": 0, 
+            "prefetch_factor": null
+    },
+    "validation_loader": {
+        "type": "ThreeDPWTFRecordDataset",
+        "args":{
+            "data_path": "../data/3DPWPreprocessedTFRecord/validation.tfrecord", 
+            "n_scenes": 5, 
+            "person_id": 0, 
+            "subsample": 1, 
+            "history_window": 15, 
+            "future_window": 15, 
+            "batch_size": 32, 
+            "shuffle": false, 
+            "n_workers": 0, 
+            "prefetch_factor": null
+        }
+    },
+    "test_loader": {
+        "type": "ThreeDPWTFRecordDataset",
+        "args":{
+            "data_path": "../data/3DPWPreprocessedTFRecord/test.tfrecord", 
+            "n_scenes": 5, 
+            "person_id": 0, 
+            "subsample": 1, 
+            "history_window": 15, 
+            "future_window": 15, 
+            "batch_size": 32, 
+            "shuffle": false, 
+            "n_workers": 0, 
+            "prefetch_factor": null
+        }
+    }
+    },
+    "optimizer": {
+        "type": "Adam",
+        "args":{
+            "lr": 0.001,
+            "weight_decay": 0.001,
+            "amsgrad": true
+        }
+    },
+    "loss": "mpjpe",
+    "metrics": [
+        "vim"
+    ],
+    "trainer": {
+        "type": "HPPWTrainer",
+        "args": {},
+
+        "epochs": 20,
+        
+        "save_dir": "../../saved/",
+        "save_period": 10,
+        "eval_period": 5,
+        "verbosity": 2
+
+    },
+    "tensorboard": true
+
+}
