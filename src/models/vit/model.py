@@ -153,7 +153,7 @@ class VisionTransformer(nn.Module):
             Tensor(N, n_h, n_w, 1): a 2D attention map of the CLS token for each sample.
         """
         ######################################
-        # TODO: Maybe required later
+        # TODO: Maybe required later for viz
         # ...
         ######################################
         

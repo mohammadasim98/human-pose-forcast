@@ -87,9 +87,6 @@ class Encoder(nn.Module):
 
         self.layers = nn.Sequential(layers)
         
-        # Reload layers according to drop_layers
-
-        
         # final layer norm
         self.ln = norm_layer(hidden_dim) 
 
@@ -97,6 +94,8 @@ class Encoder(nn.Module):
         torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
 
         input += self.pos_embedding
+        
+        # Take a subset of pretrained encoder layers
         result = self.layers[:self.num_layers](input)
 
         result = self.ln(result) # Final layer norm
