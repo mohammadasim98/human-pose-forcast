@@ -77,12 +77,15 @@ class VisionTransformer(nn.Module):
         self.heads = nn.Sequential(heads_layers)
         
         
-        #########################################
-        # TODO: Need to add a new head
+        ##############################################################################
+        # TODO: Need to add two new heads for local and global feature extraction
         # ... 
-        #########################################
+        # ...
+        # - e.g. self.head_local = ...
+        # - e.g. self.head_global = ...
+        ##############################################################################
         
-        # raise NotImplementedError
+        raise NotImplementedError
 
     
     def _process_input(self, x: torch.Tensor) -> torch.Tensor:
@@ -114,6 +117,18 @@ class VisionTransformer(nn.Module):
         return x, n_h, n_w
 
     def forward(self, x: torch.Tensor):
+        """_summary_
+
+        Args:
+            x (torch.Tensor): Input (B, C, H, W) tensor
+
+        Raises:
+            local (torch.Tensor): An output tensor of shape (B, N, H) with N as 
+                the number of patches with H as the hidden dimension.
+                
+            Global (torch.Tensor): An output tensor of shape (B, H) with H as the 
+                hidden dimension.
+        """
         # Reshape and permute the input tensor
         x, n_h, n_w = self._process_input(x)
         n = x.shape[0]
@@ -129,16 +144,21 @@ class VisionTransformer(nn.Module):
         # Take out the CLS token (in fact "tokens" because we have a batch)
         cls_token = results[:, 0]
         
-        ##########################
-        # TODO: Need to call the new head
+        ##################################################################
+        # TODO: Need to call the new head on all outputs including cls
+        # ... 
         # ...
-        ##########################
+        # - e.g. local = result # (B, 197, 768)
+        # - e.g. global = some_process(result) # (B, 768), maybe could 
+        #   use global pool etc 
+        #
+        # - return local, global
+        ##################################################################
 
         
         # visualized_attention = self.visualize_cls(attention_weights, n_h, n_w)
         
-        # raise NotImplementedError
-        return results
+        raise NotImplementedError
     
     def visualize_cls(self, attention_weights, n_h, n_w):
         r"""
