@@ -8,15 +8,16 @@ from models.vit.model import VisionTransformer
 from models.pose.decoder import PoseDecoder
 
 
+
 class HumanPosePredictorModel(nn.Module):
     
     def __init__(
         self,
         encoder: dict,
         decoder: dict,
+        vit_weights: dict,
         history_window: int=15,
         future_window: int=15,
-        batch_first: bool=True
     ):
         super().__init__()
         
@@ -30,6 +31,14 @@ class HumanPosePredictorModel(nn.Module):
         self.temporal_encoder = TemporalEncoder(**self.temporal_encoder_args)
         
         self.pose_decoder = PoseDecoder(**self.pose_decoder_args)
+        
+        self.vit_weights = vit_weights
+        self.history_window = history_window
+        self.future_window = future_window
+        
+        # Load Vit weights
+        self.image_encoder.load_state_dict(self.vit_weights, strict=True)
+
         
         ######################################
         # TODO: Need to implement

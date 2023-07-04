@@ -4,6 +4,7 @@ import sys
 import torch
 
 import numpy as np
+from typing import Union
 from tfrecord.torch.dataset import TFRecordDataset
 
 from os.path import join as ospj
@@ -22,7 +23,8 @@ class ThreeDPWTFRecordDataset():
         subsample: int=1, 
         history_window: int=5, 
         future_window: int=5, 
-        batch_size: int=10, 
+        batch_size: int=10,
+        resize: Union[tuple, list, None] = None, 
         shuffle: bool=False, 
         n_workers: int=0, 
         prefetch_factor: int=None
@@ -61,6 +63,7 @@ class ThreeDPWTFRecordDataset():
         self.shuffle = shuffle
         self.prefetch_factor = prefetch_factor
         self.subsample = subsample
+        self.resize = resize
         
         self.n_scenes = n_scenes
         self.n_workers = n_workers
@@ -97,6 +100,10 @@ class ThreeDPWTFRecordDataset():
         norm_pose = np.reshape(flatten_norm_pose, (-1, features["frames"][0], 18, 3))
         root_joint = np.reshape(flatten_root_joint, (-1, features["frames"][0], 3))    
         
+        if self.resize is not None:
+            mask = self.resize_mask(mask)
+            root_joint = self.resize_root(root_joint, (features["height"][0], features["width"][0], 3))
+
         return features["frames"][0], image_strings, mask, norm_pose, root_joint
 
     def _cache(self):
@@ -181,8 +188,49 @@ class ThreeDPWTFRecordDataset():
         """
         
         return cv2.imdecode(np.frombuffer(string, dtype=np.uint8), -1)
-        
     
+    def resize_img(self, img):
+
+        return cv2.resize(img, self.resize[:2][::-1])
+    
+    # def resize_pose(self, pose, shape):
+    #     """Resize pose.
+
+    #     Args:
+    #         root (numpy.ndarray): A (np, N, 18, 3) numpy array.
+
+    #     Returns:
+    #         numpy.ndarray: A (np, N, 18, 3) rescaled pose with np number of people.
+    #     """
+    #     factor = np.array(self.resize) / np.array(shape)
+    #     rescaled_pose = pose*np.tile(np.expand_dims([*factor[:2][::-1], factor[2]], axis=(0, 1, 2)), (1, pose.shape[1], pose.shape[2], 1))
+
+    #     return rescaled_pose.astype(int)
+    
+    def resize_mask(self, mask):
+        """Resize mask.
+
+        Args:
+            mask (numpy.ndarray): A (N, W, H) numpy array.
+
+        Returns:
+            numpy.ndarray: A (N, W', H') resized mask.
+        """
+        return  cv2.resize(mask, self.resize[:2][::-1], interpolation=cv2.INTER_NEAREST)
+
+    def resize_root(self, root, shape):
+        """Resize root.
+        Args:
+            img (numpy.ndarray): A (N, W, H, 3) numpy array.
+            root (numpy.ndarray): A (np, N, 3) numpy array.
+
+        Returns:
+            numpy.ndarray: A (np, N, 3) rescaled pose with np number of people.
+        """
+        factor = np.array(self.resize) / np.array(shape)
+        rescaled_pose = root*np.tile(np.expand_dims([*factor[:2][::-1], factor[2]], axis=(0,1)), (1, root.shape[1], 1))
+
+        return rescaled_pose.astype(int)
     
     def __getitem__(self, index):
         """ Get a single item representing a windowed history and future
@@ -203,7 +251,12 @@ class ThreeDPWTFRecordDataset():
         
         # Decode the jpeg encoded image string
         for string in img_strings:
-            img_list.append(self.decode_jpeg(string))
+            img = self.decode_jpeg(string)
+            
+            if self.resize is not None:
+                img = self.resize_img(img)
+                
+            img_list.append(img)
  
         imgs = np.array(img_list)
         history = [imgs, norm_poses, root_joints, mask]  

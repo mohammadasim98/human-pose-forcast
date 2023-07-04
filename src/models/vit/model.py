@@ -10,7 +10,7 @@ from collections import OrderedDict
 from functools import partial
 
 
-from vit.encoder import Encoder
+from models.vit.encoder import Encoder
 
 
 
@@ -29,8 +29,11 @@ class VisionTransformer(nn.Module):
         num_heads: int,
         hidden_dim: int,
         mlp_dim: int,
+        total_layers: int,
+        need_weights: bool=False
     ):
         super().__init__()
+        torch._assert(num_layers < total_layers, "The number of layers to use cannot be larger than the total number of layers")
         torch._assert(image_size % patch_size == 0, "Input shape indivisible by patch size!")
         self.image_size = image_size
         self.patch_size = patch_size
@@ -61,16 +64,25 @@ class VisionTransformer(nn.Module):
             num_heads,
             hidden_dim,
             mlp_dim,
+            total_layers,
             self.norm_layer,
+            need_weights,
         )
         self.seq_length = seq_length
 
+        # Need to define it to be able to load the state dictionary.
+        # This head wont be used.
+        heads_layers: OrderedDict[str, nn.Module] = OrderedDict()
+        heads_layers["head"] = nn.Linear(hidden_dim, self.num_classes)
+        self.heads = nn.Sequential(heads_layers)
+        
+        
         #########################################
         # TODO: Need to add a new head
         # ... 
         #########################################
         
-        raise NotImplementedError
+        # raise NotImplementedError
 
     
     def _process_input(self, x: torch.Tensor) -> torch.Tensor:
@@ -112,7 +124,7 @@ class VisionTransformer(nn.Module):
         # Add the CLS token
         x = torch.cat([batch_class_token, x], dim=1)
         
-        results, attention_weights = self.encoder(x)
+        results = self.encoder(x)
 
         # Take out the CLS token (in fact "tokens" because we have a batch)
         cls_token = results[:, 0]
@@ -122,9 +134,11 @@ class VisionTransformer(nn.Module):
         # ...
         ##########################
 
-        visualized_attention = self.visualize_cls(attention_weights, n_h, n_w)
         
-        return NotImplementedError
+        # visualized_attention = self.visualize_cls(attention_weights, n_h, n_w)
+        
+        # raise NotImplementedError
+        return results
     
     def visualize_cls(self, attention_weights, n_h, n_w):
         r"""

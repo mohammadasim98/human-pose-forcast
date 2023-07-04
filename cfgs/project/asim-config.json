@@ -13,26 +13,24 @@
                     "num_heads": 12,
                     "hidden_dim": 256,
                     "mlp_dim": 512,
-                    "dropout": 0.0,
-                    "batch_first": true
+                    "dropout": 0.0
                 },
                 "image": {
                     "image_size": 224, 
                     "patch_size": 16,  
-                    "num_layers": 12, 
+                    "num_layers": 4, 
                     "num_heads": 12,  
                     "hidden_dim": 768,
                     "mlp_dim": 3072,
                     "dropout": 0.0,
-                    "batch_first": true
+                    "total_layers": 12
                 },
                 "temporal": {
                     "num_layers": 2,
                     "num_heads": 12,
                     "hidden_dim": 256,
                     "mlp_dim": 512,
-                    "dropout": 0.0,
-                    "batch_first": true
+                    "dropout": 0.0
                 }
             },
             "decoder": {
@@ -41,8 +39,7 @@
                     "num_heads": 12,
                     "hidden_dim": 256,
                     "mlp_dim": 512,
-                    "dropout": 0.0,
-                    "batch_first": true
+                    "dropout": 0.0
                 }
             },
             "activation": {
@@ -54,27 +51,29 @@
     "train_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
-            "data_path": "../data/3DPWPreprocessedTFRecord/train.tfrecord", 
+            "data_path": "../../data/3DPWPreprocessedTFRecord/train.tfrecord", 
             "n_scenes": 5, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
             "future_window": 15, 
-            "batch_size": 32, 
+            "batch_size": 1, 
             "shuffle": false, 
             "n_workers": 0, 
             "prefetch_factor": null
+        }
     },
     "validation_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
-            "data_path": "../data/3DPWPreprocessedTFRecord/validation.tfrecord", 
+            "data_path": "../../data/3DPWPreprocessedTFRecord/validation.tfrecord", 
             "n_scenes": 5, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
             "future_window": 15, 
-            "batch_size": 32, 
+            "batch_size": 1, 
+            "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 0, 
             "prefetch_factor": null
@@ -83,18 +82,17 @@
     "test_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
-            "data_path": "../data/3DPWPreprocessedTFRecord/test.tfrecord", 
+            "data_path": "../../data/3DPWPreprocessedTFRecord/test.tfrecord", 
             "n_scenes": 5, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
             "future_window": 15, 
-            "batch_size": 32, 
+            "batch_size": 1, 
             "shuffle": false, 
             "n_workers": 0, 
             "prefetch_factor": null
         }
-    }
     },
     "optimizer": {
         "type": "Adam",

@@ -21,7 +21,6 @@ class TemporalEncoderBlock(nn.Module):
         mlp_dim: int,
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         dropout: float=0.0,
-        batch_first: bool=True,
         need_weights = False,
     ):
         super().__init__()
@@ -29,7 +28,7 @@ class TemporalEncoderBlock(nn.Module):
 
         # Attention block
         self.ln_1 = norm_layer(hidden_dim)
-        self.self_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=batch_first)
+        self.self_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=True)
 
         # MLP block
         self.ln_2 = norm_layer(hidden_dim)
@@ -69,7 +68,6 @@ class TemporalEncoder(nn.Module):
         num_heads: int, 
         hidden_dim: int,
         dropout: float=0.0,
-        batch_first: bool=True
         ) -> None:
         
         super().__init__()
