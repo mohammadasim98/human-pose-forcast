@@ -156,3 +156,4 @@ cython_debug/
 #.idea/
 /docs/related/Pose_transformer_summary.txt
 /docs/related/Robust_human-motion-forecasting-with-transformers_summary.txt
+/src/data/3DPWPreprocessed/
