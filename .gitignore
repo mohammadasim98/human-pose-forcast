@@ -11,6 +11,9 @@ __pycache__/
 # Data
 /data/
 
+# Dont upload /saved/models
+/saved/models
+
 # Distribution / packaging
 .Python
 build/

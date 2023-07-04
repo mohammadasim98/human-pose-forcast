@@ -150,6 +150,10 @@ class ConfigParser:
     def config(self):
         return self._config
 
+    @config.setter
+    def config(self, value):
+        self._config = value
+        
     @property
     def save_dir(self):
         return self._save_dir

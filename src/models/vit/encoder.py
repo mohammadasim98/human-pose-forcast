@@ -63,23 +63,32 @@ class Encoder(nn.Module):
         num_heads: int,
         hidden_dim: int,
         mlp_dim: int,
+        total_layers: int,
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         need_weights: bool=False
     ):
         super().__init__()
+        
+        torch._assert(num_layers < total_layers, "The number of layers to use cannot be larger than the total number of layers")
+        self.num_layers = num_layers
+        
         # Note that batch_size is on the first dim because
         # we have batch_first=True in nn.MultiAttention() by default
         self.pos_embedding = nn.Parameter(torch.empty(1, seq_length, hidden_dim).normal_(std=0.02))  # from BERT
 
+        # Need to load all the layers first to be able to load the weights
         layers: OrderedDict[str, nn.Module] = OrderedDict()
-        for i in range(num_layers):
+        for i in range(total_layers):
 
 
             layers[f"encoder_layer_{i}"] = EncoderBlock(num_heads, hidden_dim, mlp_dim, norm_layer,
                                                         need_weights=need_weights)
-
+        
 
         self.layers = nn.Sequential(layers)
+        
+        # Reload layers according to drop_layers
+
         
         # final layer norm
         self.ln = norm_layer(hidden_dim) 
@@ -88,8 +97,8 @@ class Encoder(nn.Module):
         torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
 
         input += self.pos_embedding
-        result, attention_weights = self.layers(input)
+        result = self.layers[:self.num_layers](input)
 
         result = self.ln(result) # Final layer norm
 
-        return result, attention_weights
+        return result
