@@ -10,15 +10,10 @@ class ConvNet(BaseModel):
     def __init__(self, input_size, hidden_layers, num_classes, activation, norm_layer, drop_prob=0.0):
         super(ConvNet, self).__init__()
 
-        ######################################################################################################
-        # TODO: Initialize the different model parameters from the config file                               #    
-        # You can use the arguments given in the constructor. For activation and norm_layer                  #
-        # to make it easier, you can use the following two lines                                             #                              
+
         self._activation = getattr(nn, activation["type"])                         #        
         self._norm_layer = getattr(nn, norm_layer["type"])                                               #
-        # Or you can just hard-code using nn.Batchnorm2d and nn.ReLU as they remain fixed for this exercise. #
-        ###################################################################################################### 
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
 
         self._activation = getattr(nn, activation["type"])(**activation["args"])
         self._norm_layer = getattr(nn, norm_layer["type"])
@@ -32,16 +27,9 @@ class ConvNet(BaseModel):
 
     def _build_model(self):
 
-        #################################################################################
-        # TODO: Initialize the modules required to implement the convolutional layer    #
-        # described in the exercise.                                                    #
-        # For Q1.a make use of conv2d and relu layers from the torch.nn module.         #
-        # For Q2.a make use of BatchNorm2d layer from the torch.nn module.              #
-        # For Q3.b Use Dropout layer from the torch.nn module.                          #
-        #################################################################################
+
         layers = []
         in_channels = self.input_size
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
         in_feature = self.input_size
         for out_feature in self.hidden_layers[:5]:
@@ -72,12 +60,7 @@ class ConvNet(BaseModel):
         return (img-min)/(max-min)    
     
     def VisualizeFilter(self):
-        ################################################################################
-        # TODO: Implement the functiont to visualize the weights in the first conv layer#
-        # in the model. Visualize them as a single image fo stacked filters.            #
-        # You can use matlplotlib.imshow to visualize an image in python                #
-        #################################################################################
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
         fig = plt.figure(figsize=(10, 5))
         params = self.layers.parameters()
         for param in params:
@@ -95,10 +78,7 @@ class ConvNet(BaseModel):
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
     def forward(self, x):
-        #################################################################################
-        # TODO: Implement the forward pass computations                                 #
-        #################################################################################
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****        
+
         x = self.layers(x)
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         return x

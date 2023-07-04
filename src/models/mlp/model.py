@@ -6,9 +6,7 @@ class MultiLayerPerceptron(BaseModel):
     def __init__(self, input_size, hidden_layers, num_classes, activation, drop_prob=0.0):
         super(MultiLayerPerceptron, self).__init__()
         
-        # TODO: Initialize the different model parameters from the config file  #
-        
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
         
         self.input_size = input_size
         self.hidden_layers = hidden_layers
@@ -20,12 +18,7 @@ class MultiLayerPerceptron(BaseModel):
 
     def build_model(self):
 
-        #################################################################################
-        # TODO: Initialize the modules required to implement the mlp with given layer   #
-        # configuration. input_size --> hidden_layers[0] --> hidden_layers[1] .... -->  #
-        # hidden_layers[-1] --> num_classes                                             #
-        # Make use of linear and relu layers from the torch.nn module                   #
-        #################################################################################
+
 
         layers = []
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
@@ -46,13 +39,7 @@ class MultiLayerPerceptron(BaseModel):
 
 
     def forward(self, x):
-        #################################################################################
-        # TODO: Implement the forward pass computations                                 #
-        # Note that you do not need to use the softmax operation at the end.            #
-        # Softmax is only required for the loss computation and the criterion will take #
-        # care of it later.                                                             #
-        #################################################################################
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
         
         x = self.layers(x)
         

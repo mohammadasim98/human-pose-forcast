@@ -11,10 +11,7 @@ class EncoderCNN(nn.Module):
         super(EncoderCNN, self).__init__()
         
         resnet = torchvision.models.resnet152(pretrained=True)
-        #########################
-        # TODO 
-        # Create a sequential model (named `self.resnet`) with all the layers of resnet except the last fc layer.
-        # Add a linear layer (named `self.linear`) to bring resnet features down to embed_size. Don't put the self.linear into the Sequential module.
+
         cnn = list(resnet.children())[:-1]
         for layer in cnn:
             layer.requires_grad = False
@@ -25,11 +22,7 @@ class EncoderCNN(nn.Module):
 
     def forward(self, images):
         """Extract feature vectors from input images."""
-        #########################
-        # TODO 
-        # Run your input images through the modules you created above (input -> Sequential -> final linear -> self.bn)
-        # Make sure to freeze the weights of the resnet layers
-        # finally return the normalized features
+
         x = self.resnet(images)
         x = nn.Flatten()(x)
         result = self.linear(x)

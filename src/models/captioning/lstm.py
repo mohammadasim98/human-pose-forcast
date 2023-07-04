@@ -29,15 +29,7 @@ class DecoderLSTM(nn.Module):
         """
         sampled_ids = []
         inputs = features.unsqueeze(1)
-        #########################
-        # TODO
-        # Use the lstm defined in init to generate token ids for the image features
-        # For the first token, the input should be the image features
-        # For each subsequent step, feed the predicted token as the input to the lstm
-        # Before feeding the token to the lstm, embed the token using the self.embed layer
-        # Note that at each step, the output is a linear transformation of the lstm hidden state
-        # The output is a vector of size vocab_size
-        # You can take hints from the sample_beam_search function below
+
         sampled_ids= []
 
         for _ in range(self.max_seg_length):
@@ -103,14 +95,7 @@ class DecoderLSTM(nn.Module):
         singleton = False
         if captions.ndim == 1:
             singleton = True
-            captions = captions[None]
-        #########################
-        # TODO
-        # Your input caption can either be a single caption or a batch of captions
-        # Your code should work for both cases
-        # Refer to utils/build_vocab.py to see how the vocab object is constructed
-        # That should give you an idea on how to use the vocab object to convert word ids to words
-        # Specifically, your final sentences should not contain the <start>, <pad> and <end> tokens
+
 
         for caption in captions:
             strcaption = ''

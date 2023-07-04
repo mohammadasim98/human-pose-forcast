@@ -64,12 +64,7 @@ class TwoLayerNetv1(object):
 
         # Compute the forward pass
         scores = 0.
-        #############################################################################
-        # TODO: Perform the forward pass, computing the class probabilities for the #
-        # input. Store the result in the scores variable, which should be an array  #
-        # of shape (N, C).                                                          #
-        #############################################################################
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
 
         scores = []
 
@@ -122,12 +117,7 @@ class TwoLayerNetv2(TwoLayerNetv1):
 
         # Compute the forward pass
         scores = 0.
-        #############################################################################
-        # TODO: Perform the forward pass, computing the class probabilities for the #
-        # input. Store the result in the scores variable, which should be an array  #
-        # of shape (N, C).                                                          #
-        #############################################################################
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
 
         scores = self.forward(X)
 
@@ -139,13 +129,7 @@ class TwoLayerNetv2(TwoLayerNetv1):
 
         # Compute the loss
         loss = 0.
-        #############################################################################
-        # TODO: Finish the forward pass, and compute the loss. This should include  #
-        # both the data loss and L2 regularization for W1 and W2. Store the result  #
-        # in the variable loss, which should be a scalar. Use the Softmax           #
-        # classifier loss.                                                          #
-        #############################################################################
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
 
         J = []
         for i in range(N):
@@ -193,12 +177,7 @@ class TwoLayerNetv3(TwoLayerNetv2):
 
         # Compute the forward pass
         scores = 0.
-        #############################################################################
-        # TODO: Perform the forward pass, computing the class probabilities for the #
-        # input. Store the result in the scores variable, which should be an array  #
-        # of shape (N, C).                                                          #
-        #############################################################################
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)****
+
         scores = []
 
         a1 = X
@@ -217,24 +196,13 @@ class TwoLayerNetv3(TwoLayerNetv2):
 
         # Compute the loss
         loss = 0.
-        #############################################################################
-        # TODO: Finish the forward pass, and compute the loss. This should include  #
-        # both the data loss and L2 regularization for W1 and W2. Store the result  #
-        # in the variable loss, which should be a scalar. Use the Softmax           #
-        # classifier loss.                                                          #
-        #############################################################################
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
         loss = self.compute_loss(X, y, reg)
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
         # Backward pass: compute gradients
         grads = {}
-        #############################################################################
-        # TODO: Compute the backward pass, computing the derivatives of the weights #
-        # and biases. Store the results in the grads dictionary. For example,       #
-        # grads['W1'] should store the gradient on W1, and be a matrix of same size #
-        #############################################################################
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
 
         deriv_z3 = np.zeros((N, a1.shape[0]))
         delta = np.array([[1 if y[i] == j else 0 for j in range(z3.shape[1])] for i in range(N)])
@@ -323,13 +291,7 @@ class TwoLayerNetv4(TwoLayerNetv3):
             loss, grads = self.back_propagation(X_batch, y=y_batch, reg=reg)
             loss_history.append(loss)
 
-            #########################################################################
-            # TODO: Use the gradients in the grads dictionary to update the         #
-            # parameters of the network (stored in the dictionary self.params)      #
-            # using stochastic gradient descent. You'll need to use the gradients   #
-            # stored in the grads dictionary defined above.                         #
-            #########################################################################
-            # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
 
             for param_name in grads:
                 self.params[param_name] += -learning_rate * grads[param_name]
@@ -373,10 +335,7 @@ class TwoLayerNetv4(TwoLayerNetv3):
         """
         y_pred = None
 
-        ###########################################################################
-        # TODO: Implement this function; it should be VERY simple!                #
-        ###########################################################################
-        # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+
 
         predict = self.forward(X)
         y_pred = np.argmax(predict, axis=1)
