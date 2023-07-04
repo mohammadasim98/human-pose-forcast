@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from torchvision.utils import make_grid
 from .base import BaseTrainer
-from utils.utils import MetricTracker
+from utils.io import MetricTracker
 
 import models.cnn.vgg11_bn as module_arch
 import models.cnn.loss as module_loss
@@ -14,7 +14,7 @@ import models.cnn.metric as module_metric
 
 
 
-class VGGTrainer(BaseTrainer):
+class HPPWTrainer(BaseTrainer):
 
     def __init__(self, config, train_loader, eval_loader=None):
         """
@@ -23,8 +23,8 @@ class VGGTrainer(BaseTrainer):
         """
         super().__init__(config)    
         # build model architecture, then print to console
-        self.model = config.init_obj('arch', module_arch)
-        self.model.to(self._device)
+        # self.model = config.init_obj('arch', module_arch)
+        # self.model.to(self._device)
         if len(self._device_ids) > 1:
             self.model = torch.nn.DataParallel(self.model, device_ids=self._device_ids)
 
@@ -67,15 +67,15 @@ class VGGTrainer(BaseTrainer):
 
         pbar = tqdm(total=len(self._train_loader) * self._train_loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
         
-        for batch_idx, (images, labels) in enumerate(self._train_loader):
+        for batch_idx, (history, future) in enumerate(self._train_loader):
 
-            images = images.to(self._device)
-            labels = labels.to(self._device)
+            history = history.to(self._device)
+            future = future.to(self._device)
 
             self.optimizer.zero_grad()
 
-            output = self.model(images)
-            loss = self.criterion(output, labels)
+            output = self.model(history, future)
+            loss = self.criterion(output, future)
 
             loss.backward()
             self.optimizer.step()
@@ -83,7 +83,7 @@ class VGGTrainer(BaseTrainer):
             if self.writer is not None: self.writer.set_step((self.current_epoch - 1) * len(self._train_loader) + batch_idx)
             self.epoch_metrics.update('loss', loss.item())
             for metric in self.metric_ftns:
-                self.epoch_metrics.update(str(metric), metric.compute(output, labels))
+                self.epoch_metrics.update(str(metric), metric.compute(output, future))
 
             pbar.set_description(f"Train Epoch: {self.current_epoch} Loss: {loss.item():.6f}")
 
@@ -92,7 +92,7 @@ class VGGTrainer(BaseTrainer):
 
                 ## Log to Tensorboard
                 if self.writer is not None:
-                    self.writer.add_image('input_train', make_grid(images.cpu(), nrow=8, normalize=True))
+                    self.writer.add_image('input_train', make_grid(history.cpu(), nrow=8, normalize=True))
 
             pbar.update(self._train_loader.batch_size)
 
@@ -124,21 +124,21 @@ class VGGTrainer(BaseTrainer):
 
         pbar = tqdm(total=len(loader) * loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
 
-        for batch_idx, (images, labels) in enumerate(loader):
+        for batch_idx, (history, future) in enumerate(loader): 
             
-            images = images.to(self._device)
-            labels = labels.to(self._device)
+            history = history.to(self._device)
+            future = future.to(self._device)
 
-            output = self.model(images)
-            loss = self.criterion(output, labels)
+            output = self.model(history, future)
+            loss = self.criterion(output, future)
 
             if self.writer is not None: self.writer.set_step((self.current_epoch - 1) * len(loader) + batch_idx, 'valid')
             self.eval_metrics.update('loss', loss.item())
             for metric in self.metric_ftns:
-                self.eval_metrics.update(str(metric), metric.compute(output, labels))
+                self.eval_metrics.update(str(metric), metric.compute(output, future))
 
             pbar.set_description(f"Eval Loss: {loss.item():.6f}")
-            if self.writer is not None: self.writer.add_image('input_valid', make_grid(images.cpu(), nrow=8, normalize=True))
+            if self.writer is not None: self.writer.add_image('input_valid', make_grid(history.cpu(), nrow=8, normalize=True))
             pbar.update(loader.batch_size)
                 
         # add histogram of model parameters to the tensorboard
