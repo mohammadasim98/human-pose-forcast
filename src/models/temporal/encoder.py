@@ -118,9 +118,7 @@ class LocalTemporalEncoderBlock(nn.Module):
         ###############################################################################
         
         # Temporal attention on local features
-        # Forward temporal attention
-        attended_value = None
-        
+        # Forward temporal attention        
         attended_values = []
         # Use the 2nd sequence element as the value
         value = inputs[:, 1, :, :]
@@ -138,6 +136,11 @@ class LocalTemporalEncoderBlock(nn.Module):
             # Attention            
             attended_value, attention_weights = self.attention(query_ln, key_ln, value_ln)
             
+            #############################################################################################
+            # TODO: Think about different ways we could implement/propagate attended values in such a 
+            # forward attention mechanism.
+            #############################################################################################
+            
             # Residual update of value
             if self.reduce:
                 value += attended_value
@@ -152,6 +155,7 @@ class LocalTemporalEncoderBlock(nn.Module):
               
         else:
             result = torch.cat(attended_values, axis=1)
+            result = self.ln_2(result)
             
           
         return result
