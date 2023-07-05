@@ -14,11 +14,7 @@ class FourEncoding(nn.Module):
                 seq_length: int,
                 d_model: int,
                 n: int = 10000):
-        super().__init__()
-        self.seq_length = seq_length
-        self.d_model = d_model
-        self.n = n
-        self.batch_size = batch_size
+        super().__init__(batch_size, seq_length, d_model, n)
         self.encoding_matrix = self.build_encoding_matrix()
 
     def build_encoding_matrix(self):
