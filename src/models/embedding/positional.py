@@ -8,7 +8,7 @@ import math
 
 
 class PosEncoding(nn.Module):
-    """Applies positional encoding to the input as described in 'Attention is all you need'"""
+    """Applies positional encoding with absolut positional values"""
 
     def __int__(self,
                 batch_size: int,
@@ -26,12 +26,9 @@ class PosEncoding(nn.Module):
         encoding_matrix = torch.empty((self.batch_size, self.seq_length, self.d_model))
         for k in range(self.seq_length):
             for i in range(int(self.d_model / 2)):
-                d = self.n ** (2 * i / self.d_model)
-                sin_val = math.sin(k / d)
-                cos_val = math.cos(k / d)
                 for j in range(self.batch_size):
-                    encoding_matrix[j, k, 2 * i] = sin_val
-                    encoding_matrix[j, k, 2 * i + 1] = cos_val
+                    encoding_matrix[j, k, 2 * i] += k / self.seq_length
+                    encoding_matrix[j, k, 2 * i + 1] += k / self.seq_length
         return encoding_matrix
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
