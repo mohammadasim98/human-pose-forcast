@@ -68,7 +68,7 @@ class ThreeDPWTFRecordDataset():
         self.n_scenes = n_scenes
         self.n_workers = n_workers
         
-        self.dataset = TFRecordDataset(data_path, None, feature_description, transform=self._parse)
+        self.dataset = TFRecordDataset(data_path, None, feature_description, transform=self._parse, )
         
         self.history_data_list = []
         self.future_data_list = []
