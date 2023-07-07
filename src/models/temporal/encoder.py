@@ -86,8 +86,7 @@ class LocalTemporalEncoderBlock(nn.Module):
         self.reduce = reduce
         
         self.ln_q = norm_layer(hidden_dim)
-        self.ln_k = norm_layer(hidden_dim)
-        self.ln_v = norm_layer(hidden_dim)
+        self.ln_kv = norm_layer(hidden_dim)
         
         self.attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=True)
         
@@ -118,40 +117,40 @@ class LocalTemporalEncoderBlock(nn.Module):
         ###############################################################################
         
         # Temporal attention on local features
-        # Forward temporal attention        
         attended_values = []
-        # Use the 2nd sequence element as the value
-        value = inputs[:, 1, :, :]
-        for i in range(hw-1):
+        
+        # Use oldest feature sequence from history as the first query
+        query = inputs[:, 0, :, :]        
+        
+        for i in range(1, hw-1):
             
-            # Update query and key
-            query = inputs[:, i, :, :]
-            key = inputs[:, i+1, :, :]
-            
-            # Layer norm
+            # Update query
+            key_value = inputs[:, i+1, :, :]
+
+            # Layer norm 
             query_ln = self.ln_q(query)
-            key_ln = self.ln_k(key)
-            value_ln = self.ln_v(value)
+            key_value_ln = self.ln_kv(key_value)
             
-            # Attention            
-            attended_value, attention_weights = self.attention(query_ln, key_ln, value_ln)
+            # Forward temporal attention on two subsequent local features at different timestep                   
+            attended_value, attention_weights = self.attention(query_ln, key_value_ln, key_value_ln)
             
             #############################################################################################
             # TODO: Think about different ways we could implement/propagate attended values in such a 
             # forward attention mechanism.
+            # - I though maybe it makes sense to add a residual after getting the attended values with 
+            #   with the original key/value and then use it as a query in the next timestep  
             #############################################################################################
             
-            # Residual update of value
-            if self.reduce:
-                value += attended_value
-            else:
-                value = attended_value
-                attended_values.append(attended_value.unsqueeze(1))
+            # Update query
+            query = key_value + attended_value
+            
+            # Append attended queries
+            attended_values.append(query.unsqueeze(1))
         
         if self.reduce:
-            x3 = self.ln_2(value)
+            x3 = self.ln_2(query)
             x4 = self.mlp(x3)
-            result = value + x4
+            result = query + x4
               
         else:
             result = torch.cat(attended_values, axis=1)
@@ -215,7 +214,6 @@ class TemporalEncoderBlock(nn.Module):
             local_result (torch.Tensor): A (B, Nf, E) or (B, Hw', Nf, E) tensor if reduce is False.
             global_result (torch.Tensor) A (B, Hw, E) tensor.
         """
-        b, hw, nf, e = local_feat.shape
         torch._assert(local_feat.dim() == 4, f"Expected Local Features of shape \
             (batch_size, seq_length, num_feature, hidden_dim) got {local_feat.shape}")
         torch._assert(global_feat.dim() == 3, f"Expected Global Features of shape \
