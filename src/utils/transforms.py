@@ -166,5 +166,16 @@ def sample(id, poses, img_paths, dir, imsize=(480, 480, 3), psize=None ):
 
     return img, pmask, root_joint, norm_pose, abs_pose
 
-
-
+def get_dct_matrix(N):
+    """ Taken from https://github.com/evendrow/somoformer/blob/main/src/utils/dct.py
+        Calculates DCT Matrix of size N.
+    """
+    dct_m = np.eye(N)
+    for k in np.arange(N):
+        for i in np.arange(N):
+            w = np.sqrt(2 / N)
+            if k == 0:
+                w = np.sqrt(1 / N)
+            dct_m[k, i] = w * np.cos(np.pi * (i + 1 / 2) * k / N)
+    idct_m = np.linalg.inv(dct_m)
+    return dct_m, idct_m
