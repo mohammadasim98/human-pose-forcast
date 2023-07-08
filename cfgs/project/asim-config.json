@@ -30,7 +30,8 @@
                     "num_heads": 12,
                     "hidden_dim": 256,
                     "mlp_dim": 512,
-                    "dropout": 0.0
+                    "dropout": 0.0,
+                    "directions": ["backward", "forward"]
                 }
             },
             "decoder": {
