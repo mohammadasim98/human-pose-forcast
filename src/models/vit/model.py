@@ -122,7 +122,7 @@ class VisionTransformer(nn.Module):
         Args:
             x (torch.Tensor): Input (B, C, H, W) tensor
 
-        Raises:
+        Returns:
             local (torch.Tensor): An output tensor of shape (B, N, H) with N as 
                 the number of patches with H as the hidden dimension.
                 
@@ -186,4 +186,5 @@ class VisionTransformer(nn.Module):
 
 
         return attention_weights
+        
         
