@@ -135,7 +135,6 @@ class LocalForwardTemporalEncoder(nn.Module):
         Raises:
             result (torch.Tensor): A (B, Hw', Nf, E) tensor if reduce is False else a (B, Nf, E) tensor.
         """
-        b, hw, nf, e = inputs.shape
         torch._assert(inputs.dim() == 4, f"Expected Local Features of shape \
             (batch_size, seq_length, num_feature, hidden_dim) got {inputs.shape}")
 
@@ -143,6 +142,7 @@ class LocalForwardTemporalEncoder(nn.Module):
         ######################################################################################
         # TODO: Need to implement a forward method for local forward temporal attention block
         
+        b, hw, nf, e = inputs.shape 
         # Temporal attention on local features
         attended_values = []
         
@@ -242,7 +242,6 @@ class LocalBackwardTemporalEncoder(nn.Module):
         Raises:
             result (torch.Tensor): A (B, Hw', Nf, E) tensor if reduce is False else a (B, Nf, E) tensor.
         """
-        b, hw, nf, e = inputs.shape
         torch._assert(inputs.dim() == 4, f"Expected Local Features of shape \
             (batch_size, seq_length, num_feature, hidden_dim) got {inputs.shape}")
 
@@ -250,6 +249,8 @@ class LocalBackwardTemporalEncoder(nn.Module):
         #######################################################################################
         # TODO: Need to implement a forward method for local backward temporal attention block
         
+        b, hw, nf, e = inputs.shape
+
         # Temporal attention on local features
         attended_values = []
         
@@ -258,7 +259,7 @@ class LocalBackwardTemporalEncoder(nn.Module):
         
         for i in range(hw-1, 1):
             
-            # Update query
+            # Update key and value
             key_value = inputs[:, i-1, :, :]
 
             # Layer norm 
