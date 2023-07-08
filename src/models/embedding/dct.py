@@ -28,7 +28,7 @@ class DiscreteCosineTransformEmbedding(nn.Module):
         Args:
             x (torch.tensor): A (B, N, J, 3) of each 2D pose keypoints.
 
-        Raises:
+        Returns:
             out (torch.tensor): A (B, N, J, 3) embedding of each 2D pose keypoints.
         """
         torch._assert(x.dim() == 4, f"Expected (batch_size, history_window, num_joints, 3) got {x.shape}")
@@ -56,8 +56,8 @@ class InverseDiscreteCosineTransformEmbedding(nn.Module):
         Args:
             x (torch.tensor): A (B, N, J, 3) of each 2D pose keypoints.
 
-        Raises:
-            NotImplementedError: A (B, N, J, 3) embedding of each 2D pose keypoints.
+        Returns:
+            out (torch.tensor): A (B, N, J, 3) embedding of each 2D pose keypoints.
         """
         torch._assert(x.dim() == 4, f"Expected (batch_size, history_window, num_joints, 3) got {x.shape}")
         

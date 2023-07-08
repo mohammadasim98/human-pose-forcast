@@ -239,7 +239,7 @@ class LocalBackwardTemporalEncoder(nn.Module):
                 window, Nf as the number of local features and E as the embedding/hidden
                 feature dimension.
 
-        Raises:
+        Returns:
             result (torch.Tensor): A (B, Hw', Nf, E) tensor if reduce is False else a (B, Nf, E) tensor.
         """
         torch._assert(inputs.dim() == 4, f"Expected Local Features of shape \
@@ -369,10 +369,10 @@ class TemporalEncoderBlock(nn.Module):
                 window, Nf as the number of local features and E as the embedding/hidden
                 feature dimension.
                 
-            global_feat (torch.Tensor): A (B, Hw, E) tensor with Hw as the history 
+            global_feat (torch.Tensor): A (B, Hw, E) tensor with Hw as the history. 
                 window and E as the embedding/hidden feature dimension.
 
-        Raises:
+        Returns:
             local_result (torch.Tensor): A (B, Nf, E) or (B, Hw', Nf, E) tensor if reduce is False.
             global_result (torch.Tensor) A (B, Hw, E) tensor.
         """
@@ -459,7 +459,7 @@ class TemporalEncoder(nn.Module):
             global_feat (torch.Tensor): A (B, Hw, E) tensor with Hw as the history 
                 window and E as the embedding/hidden feature dimension.
 
-        Raises:
+        Returns:
             local_result (torch.Tensor): A (B, Nf, E) tensor.
             global_result (torch.Tensor) A (B, Hw, E) tensor.
         """
