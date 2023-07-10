@@ -54,7 +54,7 @@ class TFWriter:
     def __init__(self) -> None:
        pass
 
-    def write_seq2tfrecord(self, seq_path):
+    def serialize_seq2tfrecord(self, seq_path):
 
         cwd = os.getcwd()
         seq_path_splitted = os.path.split(seq_path)
@@ -81,7 +81,7 @@ class TFWriter:
         tf_example = serialize_example(seq, np.array(imgs))
         
 
-        print(f"++++ Serialization Completed: {seq['seq_name']}")
+        print(f"---- Serialization Completed: {seq['seq_name']}")
         
         return tf_example
     
@@ -96,13 +96,11 @@ class TFWriter:
         folder_names = []
         seq_paths = []
         writers = []
-        print(seq_folders)
         for folder in seq_folders:
             _folder_name = os.path.split(folder)[-1]
             _new_writer = tf.io.TFRecordWriter(os.path.join(out_path, _folder_name) + ".tfrecord")
             writers.append(_new_writer)
             folder_names.append(_folder_name)
-            print(glob(os.path.join(seq_dir, "*.npz")))
             seq_paths.append(glob(os.path.join(folder, "*.npz")))
         # seq_paths = glob(os.path.join(seq_dir, "*", "*.npz"))
         print(f"====================== Started ======================")
@@ -112,13 +110,13 @@ class TFWriter:
         #     result = pool.map(self.write_seq2tfrecord, seq_paths)
         for path, writer, folder_name in zip(seq_paths, writers, folder_names):
             with multiprocessing.Pool() as pool:
-                result = pool.map(self.write_seq2tfrecord, path)
+                result = pool.map(self.serialize_seq2tfrecord, path)
                 
                 print(f"++ Writing to {folder_name}")
                 for res in result:
                     writer.write(res)
                 writer.close()
-                print(f"++ Writing Complete")
+                print(f"-- Writing Complete")
             
         toc = time.time()
 
