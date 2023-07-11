@@ -14,10 +14,10 @@
                     "dropout": 0.0
                 },
                 "decoder": {
-                    "num_layers": 2,
+                    "num_layers": 4,
                     "num_heads": 12,
                     "hidden_dim": 256,
-                    "mlp_dim": 512,
+                    "out_dim": 512,
                     "dropout": 0.0
                 }
             },
@@ -47,7 +47,8 @@
                 "type": "ReLU",
                 "args": {}
             },
-            "vit_weights": ""
+            "vit_weights": "",
+            "unroll": true
         }
     },
     "train_loader": {
@@ -57,9 +58,9 @@
             "n_scenes": 5, 
             "person_id": 0, 
             "subsample": 1, 
-            "history_window": 15, 
-            "future_window": 15, 
-            "batch_size": 1, 
+            "history_window": 10, 
+            "future_window": 10, 
+            "batch_size": 10, 
             "shuffle": false, 
             "n_workers": 0, 
             "prefetch_factor": null
@@ -72,9 +73,9 @@
             "n_scenes": 5, 
             "person_id": 0, 
             "subsample": 1, 
-            "history_window": 15, 
-            "future_window": 15, 
-            "batch_size": 1, 
+            "history_window": 10, 
+            "future_window": 10, 
+            "batch_size": 10, 
             "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 0, 

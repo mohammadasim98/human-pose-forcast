@@ -6,15 +6,11 @@ Code was originally taken from PyTorch.
 import torch
 import torch.nn as nn
 
-from collections import OrderedDict
+from typing import Union
 from functools import partial
-
+from collections import OrderedDict
 
 from models.vit.encoder import Encoder
-
-
-
-
 
 
 class VisionTransformer(nn.Module):
@@ -30,7 +26,8 @@ class VisionTransformer(nn.Module):
         hidden_dim: int,
         mlp_dim: int,
         total_layers: int,
-        need_weights: bool=False
+        need_weights: bool=False,
+        global_pool: str="avg",
     ):
         super().__init__()
         torch._assert(num_layers < total_layers, "The number of layers to use cannot be larger than the total number of layers")
@@ -69,31 +66,34 @@ class VisionTransformer(nn.Module):
             need_weights,
         )
         self.seq_length = seq_length
-
+        self.global_pool = global_pool
         # Need to define it to be able to load the state dictionary.
         # This head wont be used.
         heads_layers: OrderedDict[str, nn.Module] = OrderedDict()
         heads_layers["head"] = nn.Linear(hidden_dim, self.num_classes)
         self.heads = nn.Sequential(heads_layers)
-        
-        
-        ##############################################################################
-        # TODO: Need to add two new heads for local and global feature extraction
-        # ... 
-        # ...
-        # - e.g. self.head_local = ...
-        # - e.g. self.head_global = ...
-        ##############################################################################
-        
-        raise NotImplementedError
 
+        self.max_pool = nn.MaxPool2d(kernel_size=[patch_size, patch_size], stride=patch_size)
+        # ##############################################################################
+        # # TODO: Need to add two new heads for local and global feature extraction
+        # # ... 
+        # # ...
+            
+        
+        # raise NotImplementedError
+
+    def _process_padding_mask(self, padding_mask):
+        
+        padding_mask = torch.flatten(self.max_pool(padding_mask), start_dim=1, end_dim=-1)
+        
+        return padding_mask.bool()
     
     def _process_input(self, x: torch.Tensor) -> torch.Tensor:
-        """ Given an (N, C, H, W) image tensor, it returns an (N, S, E) tensor of tokens,
+        """ Given an (N, H, W, C) image tensor, it returns an (N, S, E) tensor of tokens,
             where N is batch size, S is number of tokens, and E is length of each token.
         """
 
-        n, c, h, w = x.shape
+        n, c, h, w  = x.shape
         p = self.patch_size
 
         # Make sure the input size is what we're prepared for!
@@ -116,11 +116,11 @@ class VisionTransformer(nn.Module):
 
         return x, n_h, n_w
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, key_padding_mask: Union[torch.Tensor, None]):
         """_summary_
 
         Args:
-            x (torch.Tensor): Input (B, C, H, W) tensor
+            x (torch.Tensor): Input (B*N, H, W, C) tensor
 
         Returns:
             local (torch.Tensor): An output tensor of shape (B, N, H) with N as 
@@ -129,6 +129,10 @@ class VisionTransformer(nn.Module):
             Global (torch.Tensor): An output tensor of shape (B, H) with H as the 
                 hidden dimension.
         """
+        torch._assert(key_padding_mask.shape[0] == x.shape[0], f"The first dimension must be equal. Got {x.shape[0]} and {key_padding_mask.shape[0]}")
+        torch._assert((key_padding_mask.shape[2] == x.shape[2] and key_padding_mask.shape[3] == x.shape[3]), 
+                      f"The height and width dimension must be equal. Got ({x.shape[2]}, {x.shape[3]}) and ({key_padding_mask.shape[2]}, {key_padding_mask.shape[3]})")
+        
         # Reshape and permute the input tensor
         x, n_h, n_w = self._process_input(x)
         n = x.shape[0]
@@ -139,7 +143,13 @@ class VisionTransformer(nn.Module):
         # Add the CLS token
         x = torch.cat([batch_class_token, x], dim=1)
         
-        results = self.encoder(x)
+        # Convert 2D padding mask to 1D vector of bool (True where there is padding else False)
+        # Also add additonal padding mask for cls token
+        key_padding_mask = self._process_padding_mask(key_padding_mask)
+        cls_mask = torch.zeros(size=(key_padding_mask.shape[0], 1))
+        cls_mask = cls_mask > 0
+        key_padding_mask = torch.cat([cls_mask, key_padding_mask], dim=-1)
+        results = self.encoder(x, key_padding_mask)
 
         # Take out the CLS token (in fact "tokens" because we have a batch)
         cls_token = results[:, 0]
@@ -148,17 +158,16 @@ class VisionTransformer(nn.Module):
         # TODO: Need to call the new head on all outputs including cls
         # ... 
         # ...
-        # - e.g. local = result # (B, 197, 768)
-        # - e.g. global = some_process(result) # (B, 768), maybe could 
-        #   use global pool etc 
-        #
-        # - return local, global
-        ##################################################################
+        
+        local_feat = results # (B, 197, 768)
+        if self.global_pool == "avg":
+            global_feat = results.mean(dim=1) # (B, 768)
+            
+        elif self.global_pool == "max":
+            global_feat = torch.max(results, dim=1) # (B, 768)
+            
+        return local_feat, global_feat
 
-        
-        # visualized_attention = self.visualize_cls(attention_weights, n_h, n_w)
-        
-        raise NotImplementedError
     
     def visualize_cls(self, attention_weights, n_h, n_w):
         r"""

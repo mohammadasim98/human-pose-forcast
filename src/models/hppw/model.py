@@ -18,7 +18,8 @@ class HumanPosePredictorModel(nn.Module):
         pose: dict,
         image: dict,
         temporal: dict,
-        vit_weights: str
+        vit_weights: str,
+        unroll: bool=True
     ) -> None:
         super().__init__()
         
@@ -35,6 +36,7 @@ class HumanPosePredictorModel(nn.Module):
         self.decoder = PoseDecoder(**self.pose_decoder_args)
         
         self.vit_weights = vit_weights
+        self.unroll = unroll
         
         # Load Vit weights
         self.image_encoder.load_state_dict(self.vit_weights, strict=True)
@@ -45,15 +47,35 @@ class HumanPosePredictorModel(nn.Module):
         
         raise NotImplementedError
     
-    def pose_encoding(self, relative_poses, root_joints, history_window):
+    def pose_encoding(self, relative_poses, root_joints, history_window, unroll: bool=False):
         """ Perform spatial and temporal attention on poses
 
         Args:
             relative_poses (_type_): _description_
             root_joints (_type_): _description_
         """
-        
-        memory_local, memory_global = self.pose_encoder(root_joint=root_joints, relative_pose=relative_poses)
+        # sequence_length can be combined with future_window + history_window or just history_window
+        b, sequence_length, num_joints, dim = relative_poses.shape
+
+        if relative_poses.dim() == 4 and self.unroll:
+            relative_poses = relative_poses.view(-1, num_joints, dim)
+            root_joints = root_joints.view(-1, dim)
+            
+        # Out Shape: (B, history_window, num_patches + 1, E) and (B, history_window, E)
+        if unroll:
+            memory_local, memory_global = self.pose_encoder(root_joints=root_joints, relative_poses=relative_poses)
+
+        else:
+            memory_local = []
+            memory_global = []
+            for i in range(sequence_length):
+                mem_local, mem_global = self.pose_encoder(root_joints=root_joints[:, i, ...], relative_poses=relative_poses[:, i, ...])
+                memory_local.append(mem_local)
+                memory_global.append(mem_global)
+                
+            memory_local = torch.cat(memory_local, dim=0).permute(1, 0, 2, 3)
+            memory_global = torch.cat(memory_global, dim=0).permute(1, 0, 2)
+            
         # Out Shape: (B, num_joints, E) and (B, history_window, E)
         memory_temp_local, memory_temp_global = self.pose_temporal_encoder(memory_local[:, :history_window, ...], memory_global[:, :history_window, ...])
         memory = torch.cat([memory_temp_local, memory_temp_global], dim=1) # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
@@ -66,20 +88,41 @@ class HumanPosePredictorModel(nn.Module):
         return memory, tgt_pose_feat 
         
     
-    def image_encoding(self, img_seq, mask):
+    def image_encoding(self, img_seq, mask, unroll: bool=False):
         """ Perform local and global spatial and temporal encoding on image sequences
 
         Args:
-            img_seq (torch.Tensor): An input tensor of shape (batch_size, history_window, H, W, C)
-            mask (torch.Tensor): An input padding mask (batch_size, H, W) for the whole hisotry sequence
-
+            img_seq (torch.Tensor): An input tensor of shape (batch_size, history_window, H, W, C) 
+            mask (torch.Tensor): An input padding mask (batch_size, H, W) 
+            unroll (bool): if True use unrolled version i.e, batch_size*sequence_length. Else, 
+                use iteration. Defaults to False.
+             
         Returns:
             torch.tensor: A tensor containing concatenated spatially and temporally encoded 
                 local and global image features
         """
-        # Out Shape: (B, history_window, num_patches + 1, E) and (B, history_window, E)
-        memory_local, memory_global = self.image_encoder(inputs=img_seq, mask=mask)
+        b, history_window, H, W, C = img_seq.shape
 
+        if img_seq.dim() == 5 and self.unroll:
+            img_seq = img_seq.view(-1, H, W, C).permute(0, 3, 1, 2)
+            mask= mask.repeat(1, history_window, 1, 1)
+            mask = mask.view(-1, H, W).permute(0, 3, 1, 2)
+            
+        # Out Shape: (B, history_window, num_patches + 1, E) and (B, history_window, E)
+        if unroll:
+            memory_local, memory_global = self.image_encoder(inputs=img_seq, mask=mask)
+
+        else:
+            memory_local = []
+            memory_global = []
+            for i in range(history_window):
+                mem_local, mem_global = self.image_encoder(inputs=img_seq[:, i, ...], mask=mask)
+                memory_local.append(mem_local)
+                memory_global.append(mem_global)
+                
+            memory_local = torch.cat(memory_local, dim=0).permute(1, 0, 2, 3)
+            memory_global = torch.cat(memory_global, dim=0).permute(1, 0, 2)
+            
         # Get local and global temporally encoded features of sequences of images and poses
         # Out Shape: (B, num_patches + 1, E) and (B, history_window, E)
         memory_local, memory_global = self.im_temporal_encoder(memory_local, memory_global)
@@ -118,7 +161,7 @@ class HumanPosePredictorModel(nn.Module):
         # example:
         
         img_seq = history[0]
-        history_window = img_seq.shape[1]
+        b, history_window, H, W, C = img_seq.shape[1]
         
         mask = history[3]
         if is_teacher_forcing:
@@ -141,10 +184,12 @@ class HumanPosePredictorModel(nn.Module):
         # Out Shape: (B, future_window + history_window, J, E) and (B, future_window + history_window, E)
         
         # Get combined* local and global features from sequences of images with padding mask
-        memory_img = self.image_encoding(img_seq=img_seq, mask=mask)
+        
+            
+        memory_img = self.image_encoding(img_seq=img_seq, mask=mask, unroll=self.unroll)
         
         # Get combined* local and global features from sequences of poses
-        memory_poses, tgt_poses = self.pose_encoding(relative_poses=relative_poses, root_joints=root_joints, history_window=history_window)
+        memory_poses, tgt_poses = self.pose_encoding(relative_poses=relative_poses, root_joints=root_joints, history_window=history_window, unroll=self.unroll)
         
         # Autoregressive decoder with "dual" conditioning
         # Currently uses only combined local and global features. Need to modify it later for further evaluation.

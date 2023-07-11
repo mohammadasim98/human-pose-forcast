@@ -78,7 +78,7 @@ class PoseEncoder(nn.Module):
         #######################################################
         raise NotImplementedError
         
-    def forward(self, norm_pose: torch.Tensor, root: torch.Tensor):
+    def forward(self, root_joints: torch.Tensor, relative_poses: torch.Tensor):
         """Perform forward pass
 
         Args:
@@ -88,8 +88,8 @@ class PoseEncoder(nn.Module):
         Raises:
             NotImplementedError: Need to implement forward pass
         """
-        torch._assert(norm_pose.dim() == 4, f"Expected (batch_size, history_window, num_joints, hidden_dim) got {norm_pose.shape}")
-        torch._assert(root.dim() == 3, f"Expected (batch_size, history_window, hidden_dim) got {root.shape}")
+        torch._assert(relative_poses.dim() == 4, f"Expected (batch_size*sequence_length, num_joints, hidden_dim) got {relative_poses.shape}")
+        torch._assert(root_joints.dim() == 3, f"Expected (batch_size*sequence_length, hidden_dim) got {root_joints.shape}")
 
         ######################################################################
         # TODO: Need to implement a forward method for pose encoder

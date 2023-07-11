@@ -149,7 +149,7 @@ class PoseDecoder(nn.Module):
                 
                 # Concatenate the latest prediction
                 tgt_poses = torch.cat([tgt_poses, result[:, -1, ...].unsqueeze(1)], dim=1)
-        
+                
         # Linear Projection to out_dim        
         result = self.ln(result)
         result= self.mlp(result)

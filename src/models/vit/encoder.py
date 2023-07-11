@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
 
-from collections import OrderedDict
+from typing import Union
 from functools import partial
+from collections import OrderedDict
 
 from models.vit.mlp import MLPBlock 
+from models.vit.sequential import MultiInputSequential
 
 class EncoderBlock(nn.Module):
     """ Generic Transformer encoder block.
@@ -33,14 +35,14 @@ class EncoderBlock(nn.Module):
 
         self.need_weights = need_weights # Whether to return attention weights as well
 
-    def forward(self, input: torch.Tensor):
+    def forward(self, input: torch.Tensor, key_padding_mask: Union[torch.Tensor, None]):
         torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
 
         result = None
         attention_weights = None # Needed only if self.need_weights is True for this specific Block
 
         x0 = self.ln_1(input)
-        x1, attention_weights = self.self_attention(x0, x0, x0, need_weights=self.need_weights)
+        x1, attention_weights = self.self_attention(x0, x0, x0, key_padding_mask=key_padding_mask, need_weights=self.need_weights)
         x2 = input + x1
         x3 = self.ln_2(x2)
         x4 = self.mlp(x3)
@@ -85,18 +87,19 @@ class Encoder(nn.Module):
                                                         need_weights=need_weights)
         
 
-        self.layers = nn.Sequential(layers)
+            
+        self.layers = MultiInputSequential(layers)
         
         # final layer norm
         self.ln = norm_layer(hidden_dim) 
 
-    def forward(self, input: torch.Tensor):
+    def forward(self, input: torch.Tensor, key_padding_mask: Union[torch.Tensor, None]):
         torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
 
         input += self.pos_embedding
         
         # Take a subset of pretrained encoder layers
-        result = self.layers[:self.num_layers](input)
+        result = self.layers[:self.num_layers](input, key_padding_mask)
 
         result = self.ln(result) # Final layer norm
 
