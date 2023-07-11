@@ -101,17 +101,21 @@ class HumanPosePredictorModel(nn.Module):
             torch.tensor: A tensor containing concatenated spatially and temporally encoded 
                 local and global image features
         """
-        b, history_window, H, W, C = img_seq.shape
+        img_seq = img_seq.permute(0, 1, 4, 2, 3)
+        mask = mask.unsqueeze(1).unsqueeze(-1)
+        b, history_window, C, H, W = img_seq.shape
 
         if img_seq.dim() == 5 and self.unroll:
-            img_seq = img_seq.view(-1, H, W, C).permute(0, 3, 1, 2)
+            img_seq = img_seq.view(-1, H, W, C)
             mask= mask.repeat(1, history_window, 1, 1)
-            mask = mask.view(-1, H, W).permute(0, 3, 1, 2)
+            mask = mask.view(-1, H, W, 1).permute(0, 3, 1, 2)
             
         # Out Shape: (B, history_window, num_patches + 1, E) and (B, history_window, E)
         if unroll:
             memory_local, memory_global = self.image_encoder(inputs=img_seq, mask=mask)
-
+            memory_local = memory_local.view(b, history_window, memory_local.shape[1], memory_local.shape[2])
+            memory_global = memory_global.view(b, history_window, memory_global.shape[1])
+            
         else:
             memory_local = []
             memory_global = []

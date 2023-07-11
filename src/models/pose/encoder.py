@@ -82,8 +82,8 @@ class PoseEncoder(nn.Module):
         """Perform forward pass
 
         Args:
-            norm_pose (torch.tensor): A (B, N, J, E) of embedding of each 2D pose keypoints.
-            root (torch.tensor): A (B, N, E) of embedding of each 2D pose keypoints.
+            norm_pose (torch.tensor): A (B*N or B, J, E) of embedding of each 2D pose keypoints.
+            root (torch.tensor): A (B*N or B, E) of embedding of each 2D pose keypoints.
 
         Raises:
             NotImplementedError: Need to implement forward pass
