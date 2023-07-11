@@ -5,17 +5,24 @@
     "arch": {
         "type": "HumanPosePredictorModel",
         "args": {
-            "history_window": 15,
-            "future_window": 15,
-            "encoder": {
-                "pose": {
+            "pose": {
+                "encoder":{
                     "num_layers": 2,
                     "num_heads": 12,
                     "hidden_dim": 256,
                     "mlp_dim": 512,
                     "dropout": 0.0
                 },
-                "image": {
+                "decoder": {
+                    "num_layers": 2,
+                    "num_heads": 12,
+                    "hidden_dim": 256,
+                    "mlp_dim": 512,
+                    "dropout": 0.0
+                }
+            },
+            "image": {
+                "encoder":{
                     "image_size": 224, 
                     "patch_size": 16,  
                     "num_layers": 4, 
@@ -24,8 +31,10 @@
                     "mlp_dim": 3072,
                     "dropout": 0.0,
                     "total_layers": 12
-                },
-                "temporal": {
+                }
+            },
+            "temporal": {
+                "encoder": {
                     "num_layers": 2,
                     "num_heads": 12,
                     "hidden_dim": 256,
@@ -34,19 +43,11 @@
                     "directions": ["backward", "forward"]
                 }
             },
-            "decoder": {
-                "pose": {
-                    "num_layers": 2,
-                    "num_heads": 12,
-                    "hidden_dim": 256,
-                    "mlp_dim": 512,
-                    "dropout": 0.0
-                }
-            },
             "activation": {
                 "type": "ReLU",
                 "args": {}
-            }
+            },
+            "vit_weights": ""
         }
     },
     "train_loader": {

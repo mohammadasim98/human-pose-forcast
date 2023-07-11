@@ -132,7 +132,7 @@ class ThreeDPWTFRecordDataset():
 
         Args:
             data (typle(int, list(str), numpy.ndarray, numpy.ndarray, numpy.ndarray)): 
-                An input of shape [frames, image_strings, mask, norm_pose, root_joint] to be windowed. 
+                An input list of [frames, image_strings, mask, norm_pose, root_joint] to be windowed. 
 
         Returns:
             history (list(numpy.ndarray, numpy.ndarray, numpy.ndarray, numpy.ndarray)): 

@@ -8,9 +8,9 @@ from torchvision.utils import make_grid
 from .base import BaseTrainer
 from utils.io import MetricTracker
 
-import models.cnn.vgg11_bn as module_arch
-import models.cnn.loss as module_loss
-import models.cnn.metric as module_metric
+import models.hppw as module_arch
+import models.hppw as module_metric
+import models.hppw as module_loss
 
 
 
@@ -23,8 +23,8 @@ class HPPWTrainer(BaseTrainer):
         """
         super().__init__(config)    
         # build model architecture, then print to console
-        # self.model = config.init_obj('arch', module_arch)
-        # self.model.to(self._device)
+        self.model = config.init_obj('arch', module_arch)
+        self.model.to(self._device)
         if len(self._device_ids) > 1:
             self.model = torch.nn.DataParallel(self.model, device_ids=self._device_ids)
 

@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from typing import Union
+
 from ..embedding import *
 from models.pose.encoder import PoseEncoder
 from models.temporal.encoder import TemporalEncoder
@@ -13,18 +15,17 @@ class HumanPosePredictorModel(nn.Module):
     
     def __init__(
         self,
-        encoder: dict,
-        decoder: dict,
-        vit_weights: dict,
-        history_window: int=15,
-        future_window: int=15,
-    ):
+        pose: dict,
+        image: dict,
+        temporal: dict,
+        vit_weights: str
+    ) -> None:
         super().__init__()
         
-        self.pose_encoder_args = encoder["pose"]
-        self.image_encoder_args = encoder["image"]
-        self.temporal_encoder_args = encoder["temporal"]
-        self.pose_decoder_args = decoder["pose"]
+        self.pose_encoder_args = pose["encoder"]
+        self.image_encoder_args = image["encoder"]
+        self.temporal_encoder_args = temporal["encoder"]
+        self.pose_decoder_args = pose["decoder"]
         
         self.pose_encoder = PoseEncoder(**self.pose_encoder_args)
         self.image_encoder = VisionTransformer(**self.image_encoder_args)
@@ -34,8 +35,6 @@ class HumanPosePredictorModel(nn.Module):
         self.decoder = PoseDecoder(**self.pose_decoder_args)
         
         self.vit_weights = vit_weights
-        self.history_window = history_window
-        self.future_window = future_window
         
         # Load Vit weights
         self.image_encoder.load_state_dict(self.vit_weights, strict=True)
@@ -46,7 +45,7 @@ class HumanPosePredictorModel(nn.Module):
         
         raise NotImplementedError
     
-    def pose_encoding(self, relative_poses, root_joints, training):
+    def pose_encoding(self, relative_poses, root_joints, history_window):
         """ Perform spatial and temporal attention on poses
 
         Args:
@@ -58,20 +57,15 @@ class HumanPosePredictorModel(nn.Module):
         
         memory_local, memory_global = self.pose_encoder(root_joint=root_joints, relative_pose=relative_poses)
         # Out Shape: (B, num_joints, E) and (B, history_window, E)
-        memory_temp_local, memory_temp_global = self.pose_temporal_encoder(memory_local[:, :self.history_window, ...], memory_global[:, :self.history_window, ...])
+        memory_temp_local, memory_temp_global = self.pose_temporal_encoder(memory_local[:, :history_window, ...], memory_global[:, :history_window, ...])
         memory = torch.cat([memory_temp_local, memory_temp_global], dim=1) # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
-        if training:
-            # Need to add -1 to also include the current pose features
-            # This will allow to shift the output by 1 to the right and 
-            # can act as a <start> token.
-            # Return memory for conditioning the decoder
-            # Return target poses for decoder from future including the current pose
-            tgt_pose_feat = torch.cat([memory_local[:, self.history_window-1:self.future_window, ...], memory_global[:, self.history_window-1:self.future_window, ...]])
-            return memory, tgt_pose_feat 
-        else:
-            
-            # Return only memory for conditioning the decoder
-            return memory
+        # Need to add -1 to also include the current pose features
+        # This will allow to shift the output by 1 to the right and 
+        # can act as a <start> token.
+        # Return memory for conditioning the decoder
+        # Return target poses for decoder from future including the current pose
+        tgt_pose_feat = torch.cat([memory_local[:, history_window-1:, ...], memory_global[:, history_window-1:, ...]])
+        return memory, tgt_pose_feat 
         
     
     def image_encoding(self, img_seq, mask):
@@ -94,7 +88,7 @@ class HumanPosePredictorModel(nn.Module):
         
         return torch.cat([memory_local, memory_global], dim=1) # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
         
-    def forward(self, history, future=None, training=False):
+    def forward(self, history: list, future: Union[list, None], is_teacher_forcing: bool=False):
         """Perform forward pass
 
         Args:
@@ -106,13 +100,15 @@ class HumanPosePredictorModel(nn.Module):
                     (batch_size, history_window, 3), 
                     (batch_size, H, W)
                 ]
-                
             future (list(torch.tensor, torch.tensor)): 
                 A list of [norm_poses, root_joints] each with their respective shape as
                 [
                     (batch_size, future_window, num_joints, 3), 
                     (batch_size, future_window, 3), 
                 ]
+            is_teacher_forcing (bool): A boolean if True set to use teacher forcing method 
+                for autoregressive. If False non-autoregressive decoding (may not be good to use all the time during training). 
+                    Defaults to False.
   
         Raises:
             NotImplementedError: Need to implement forward pass
@@ -122,10 +118,12 @@ class HumanPosePredictorModel(nn.Module):
         ######################################################################
         # TODO: Need to implement a forward method for pose encoder
         # example:
-
+        
         img_seq = history[0]
+        history_window = img_seq.shape[1]
+        
         mask = history[3]
-        if training:
+        if is_teacher_forcing:
             # Use concatenated history and future poses
 
             # Out Shape: (B, future_window + history_window, J, 3)
@@ -148,11 +146,12 @@ class HumanPosePredictorModel(nn.Module):
         memory_img = self.image_encoding(img_seq=img_seq, mask=mask)
         
         # Get combined* local and global features from sequences of poses
-        memory_poses, tgt_poses = self.pose_encoding(relative_poses=relative_poses, root_joints=root_joints, training=training)
+        memory_poses, tgt_poses = self.pose_encoding(relative_poses=relative_poses, root_joints=root_joints, history_window=history_window)
         
         # Autoregressive decoder with "dual" conditioning
         # Currently uses only combined local and global features. Need to modify it later for further evaluation.
-        # Out Shape: (B, future_window, J, 3)
-        out_poses = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, target=tgt_poses, training=training)
-
+        # Out Shape: (B, future_window, J, 2)
+        
+        out_poses = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, target=tgt_poses, is_teacher_forcing=is_teacher_forcing)
+        
         return out_poses
