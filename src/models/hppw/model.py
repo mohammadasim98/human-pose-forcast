@@ -53,8 +53,6 @@ class HumanPosePredictorModel(nn.Module):
             root_joints (_type_): _description_
         """
         
-        
-        
         memory_local, memory_global = self.pose_encoder(root_joint=root_joints, relative_pose=relative_poses)
         # Out Shape: (B, num_joints, E) and (B, history_window, E)
         memory_temp_local, memory_temp_global = self.pose_temporal_encoder(memory_local[:, :history_window, ...], memory_global[:, :history_window, ...])
@@ -96,8 +94,8 @@ class HumanPosePredictorModel(nn.Module):
                 A list of [imgs, norm_poses, root_joints, mask] each with their respective shape as
                 [
                     (batch_size, history_window, H, W, C), 
-                    (batch_size, history_window, num_joints, 3), 
-                    (batch_size, history_window, 3), 
+                    (batch_size, history_window, num_joints, 2), 
+                    (batch_size, history_window, 2), 
                     (batch_size, H, W)
                 ]
             future (list(torch.tensor, torch.tensor)): 
