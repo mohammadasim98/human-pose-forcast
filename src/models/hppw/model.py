@@ -45,6 +45,54 @@ class HumanPosePredictorModel(nn.Module):
         # TODO: Need to implement
         
         raise NotImplementedError
+    
+    def pose_encoding(self, relative_poses, root_joints, training):
+        """ Perform spatial and temporal attention on poses
+
+        Args:
+            relative_poses (_type_): _description_
+            root_joints (_type_): _description_
+        """
+        
+        
+        
+        memory_local, memory_global = self.pose_encoder(root_joint=root_joints, relative_pose=relative_poses)
+        # Out Shape: (B, num_joints, E) and (B, history_window, E)
+        memory_temp_local, memory_temp_global = self.pose_temporal_encoder(memory_local[:, :self.history_window, ...], memory_global[:, :self.history_window, ...])
+        memory = torch.cat([memory_temp_local, memory_temp_global], dim=1) # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
+        if training:
+            # Need to add -1 to also include the current pose features
+            # This will allow to shift the output by 1 to the right and 
+            # can act as a <start> token.
+            # Return memory for conditioning the decoder
+            # Return target poses for decoder from future including the current pose
+            tgt_pose_feat = torch.cat([memory_local[:, self.history_window-1:self.future_window, ...], memory_global[:, self.history_window-1:self.future_window, ...]])
+            return memory, tgt_pose_feat 
+        else:
+            
+            # Return only memory for conditioning the decoder
+            return memory
+        
+    
+    def image_encoding(self, img_seq, mask):
+        """ Perform local and global spatial and temporal encoding on image sequences
+
+        Args:
+            img_seq (torch.Tensor): An input tensor of shape (batch_size, history_window, H, W, C)
+            mask (torch.Tensor): An input padding mask (batch_size, H, W) for the whole hisotry sequence
+
+        Returns:
+            torch.tensor: A tensor containing concatenated spatially and temporally encoded 
+                local and global image features
+        """
+        # Out Shape: (B, history_window, num_patches + 1, E) and (B, history_window, E)
+        memory_local, memory_global = self.image_encoder(inputs=img_seq, mask=mask)
+
+        # Get local and global temporally encoded features of sequences of images and poses
+        # Out Shape: (B, num_patches + 1, E) and (B, history_window, E)
+        memory_local, memory_global = self.im_temporal_encoder(memory_local, memory_global)
+        
+        return torch.cat([memory_local, memory_global], dim=1) # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
         
     def forward(self, history, future=None, training=False):
         """Perform forward pass
@@ -75,6 +123,8 @@ class HumanPosePredictorModel(nn.Module):
         # TODO: Need to implement a forward method for pose encoder
         # example:
 
+        img_seq = history[0]
+        mask = history[3]
         if training:
             # Use concatenated history and future poses
 
@@ -84,25 +134,25 @@ class HumanPosePredictorModel(nn.Module):
             # Out Shape: (B, future_window + history_window, 3)
             root_joints = torch.cat([history[2], future[1]])
 
-            # Out Shape: (B, future_window + history_window, J, E) and (B, future_window + history_window, E)
-            local_pose_feat, global_pose_feat = self.pose_encoder(root_joint=root_joints, relative_pose=relative_poses)
         else:
             # Use only history for inference/test
-
-            # Out Shape: (B, history_window, J, E) and (B, history_window, E)
-            local_pose_feat, global_pose_feat = self.pose_encoder(root_joint=history[2], relative_pose=history[1])
-
-        # Get local and global features from sequences of images and mask
-        # Out Shape: (B, history_window, num_patches + 1, E) and (B, history_window, E)
-        local_im_feat, global_im_feat = self.image_encoder(inputs=history[0], mask=history[3])
-
-        # Get local and global temporally encoded features of sequences of images and poses
-        # Out Shape: (B, history_window, E) and (B, history_window, E)
-        local_im_feat, global_im_feat = self.im_temporal_encoder(local_im_feat, global_im_feat)
-        local_pose_feat, global_pose_feat = self.pose_temporal_encoder(local_pose_feat, global_pose_feat)
-
+            # Shape: (B, history_window, J, 3) and (B, history_window, 3)
+            relative_poses = history[1]
+            root_joints = history[2]
+            
+        ##########################################################
+        # TODO: Need to Embed the root_joints and relative_poses
+        # Out Shape: (B, future_window + history_window, J, E) and (B, future_window + history_window, E)
+        
+        # Get combined* local and global features from sequences of images with padding mask
+        memory_img = self.image_encoding(img_seq=img_seq, mask=mask)
+        
+        # Get combined* local and global features from sequences of poses
+        memory_poses, tgt_poses = self.pose_encoding(relative_poses=relative_poses, root_joints=root_joints, training=training)
+        
         # Autoregressive decoder with "dual" conditioning
+        # Currently uses only combined local and global features. Need to modify it later for further evaluation.
         # Out Shape: (B, future_window, J, 3)
-        out_poses = self.decoder(local_im_feat, global_im_feat, local_pose_feat, global_pose_feat, training=training)
+        out_poses = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, target=tgt_poses, training=training)
 
         return out_poses
