@@ -3,11 +3,14 @@ import torch.nn as nn
 
 from typing import Union
 
-from ..embedding import *
+from models.embedding import *
 from models.pose.encoder import PoseEncoder
 from models.temporal.encoder import TemporalEncoder
 from models.vit.model import VisionTransformer
 from models.pose.decoder import PoseDecoder
+from models.embedding.fourier import FourierEncoding
+
+from os.path import join as ospj
 
 
 
@@ -15,56 +18,71 @@ class HumanPosePredictorModel(nn.Module):
     
     def __init__(
         self,
+        root_path,
         pose: dict,
         image: dict,
-        temporal: dict,
         vit_weights: str,
-        unroll: bool=True
+        activation: dict,
+        unroll: bool=True,
     ) -> None:
         super().__init__()
         
-        self.pose_encoder_args = pose["encoder"]
-        self.image_encoder_args = image["encoder"]
-        self.temporal_encoder_args = temporal["encoder"]
-        self.pose_decoder_args = pose["decoder"]
+        self.image_spatial_encoder_args = image["spatial"]["encoder"]
+        self.im_temporal_encoder_args = image["temporal"]["encoder"]
         
-        self.pose_encoder = PoseEncoder(**self.pose_encoder_args)
-        self.image_encoder = VisionTransformer(**self.image_encoder_args)
-        self.im_temporal_encoder = TemporalEncoder(**self.temporal_encoder_args)
-        self.pose_temporal_encoder = TemporalEncoder(**self.temporal_encoder_args)
+        self.pose_spatial_encoder_args = pose["spatial"]["encoder"]
+        self.pose_temporal_encoder_args = pose["temporal"]["encoder"]
         
-        self.decoder = PoseDecoder(**self.pose_decoder_args)
+        self.pose_spatiotemporal_temporal_encoder_args = pose["spatiotemporal"]["temporal"]
+        self.pose_spatiotemporal_decoder_args = pose["spatiotemporal"]["spatial"]["decoder"]
         
-        self.vit_weights = vit_weights
+        # Our method's building blocks
+        self.pose_encoder = PoseEncoder(**self.pose_spatial_encoder_args)
+        self.image_encoder = VisionTransformer(**self.image_spatial_encoder_args)
+        
+        self.im_temporal_encoder = TemporalEncoder(**self.im_temporal_encoder_args)
+        self.pose_temporal_encoder = TemporalEncoder(**self.pose_temporal_encoder_args)
+        
+        self.decoder = PoseDecoder(**self.pose_spatiotemporal_decoder_args, temporal=self.pose_spatiotemporal_temporal_encoder_args)
+        
+        self.vit_weights = torch.load(ospj(root_path, vit_weights))
+
         self.unroll = unroll
         
         # Load Vit weights
         self.image_encoder.load_state_dict(self.vit_weights, strict=True)
-
-        
-        ######################################
-        # TODO: Need to implement
-        
-        raise NotImplementedError
     
     def pose_encoding(self, relative_poses, root_joints, history_window, unroll: bool=False):
         """ Perform spatial and temporal attention on poses
 
         Args:
-            relative_poses (_type_): _description_
-            root_joints (_type_): _description_
+            relative_poses (torch.Tensor) : An input of poses of shape 
+                (batch_size, history_window {+ future_window}, num_joints, 2)
+            root_joints (torch.Tensor): An input of rootjoints of shape 
+                (batch_size, history_window {+ future_window}, 2)
+            
+        Returns:
+            memory (torch.Tensor): A (batch_size, num_joints + history_window, E) Spatiotemporally encoded memory 
+            tgt_pose_feat (torch.Tensor): A (batch_size, future_window + 1, E) targets for the decoder. If future is not provided, 
+                target will be the current sample hence + 1. 
         """
+        torch._assert(relative_poses.dim() == 4, "relative_pose dimensions must be of length 4")
+        torch._assert(root_joints.dim() == 3, "relative_pose dimensions must be of length 3")
+        
         # sequence_length can be combined with future_window + history_window or just history_window
-        b, sequence_length, num_joints, dim = relative_poses.shape
+        _, sequence_length, num_joints, dim = relative_poses.shape
 
-        if relative_poses.dim() == 4 and self.unroll:
+        if unroll:
             relative_poses = relative_poses.view(-1, num_joints, dim)
             root_joints = root_joints.view(-1, dim)
             
-        # Out Shape: (B, history_window, num_patches + 1, E) and (B, history_window, E)
-        if unroll:
+            # Out Shape: (batch_size*sequence_length, num_joints, E) and (batch_size*sequence_length, E)
             memory_local, memory_global = self.pose_encoder(root_joints=root_joints, relative_poses=relative_poses)
-
+            
+            # Out Shape: (batch_size, sequence_length, num_joints, E) and (batch_size, sequence_length, E)
+            memory_local = memory_local.view(-1, sequence_length, num_joints, dim)
+            memory_global = memory_global.view(-1, sequence_length, dim)
+            
         else:
             memory_local = []
             memory_global = []
@@ -78,13 +96,18 @@ class HumanPosePredictorModel(nn.Module):
             
         # Out Shape: (B, num_joints, E) and (B, history_window, E)
         memory_temp_local, memory_temp_global = self.pose_temporal_encoder(memory_local[:, :history_window, ...], memory_global[:, :history_window, ...])
-        memory = torch.cat([memory_temp_local, memory_temp_global], dim=1) # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
+        
+        # concatenate along sequence dimension (B, num_joints + history_window, E)
+        memory = torch.cat([memory_temp_local, memory_temp_global], dim=1) 
+        
         # Need to add -1 to also include the current pose features
         # This will allow to shift the output by 1 to the right and 
         # can act as a <start> token.
         # Return memory for conditioning the decoder
         # Return target poses for decoder from future including the current pose
-        tgt_pose_feat = torch.cat([memory_local[:, history_window-1:, ...], memory_global[:, history_window-1:, ...]])
+        # concatenate along num_joint  dimension (B, future_window + 1, num_joints + 1, E)
+        tgt_pose_feat = torch.cat([memory_local[:, history_window-1:, ...], memory_global[:, history_window-1:, ...]], dim=2)
+        
         return memory, tgt_pose_feat 
         
     
@@ -101,29 +124,41 @@ class HumanPosePredictorModel(nn.Module):
             torch.tensor: A tensor containing concatenated spatially and temporally encoded 
                 local and global image features
         """
+        torch._assert(img_seq.dim() == 5, "input image data must be of shape (batch_size, history_window, H, W, C)")
+        torch._assert(mask.dim() == 3 or mask.dim() == 4, "input image data must be of shape (batch_size, H, W) or (batch_size, H, W, 1)")
+        
         img_seq = img_seq.permute(0, 1, 4, 2, 3)
-        mask = mask.unsqueeze(1).unsqueeze(-1)
-        b, history_window, C, H, W = img_seq.shape
-
-        if img_seq.dim() == 5 and self.unroll:
-            img_seq = img_seq.view(-1, H, W, C)
-            mask= mask.repeat(1, history_window, 1, 1)
-            mask = mask.view(-1, H, W, 1).permute(0, 3, 1, 2)
+        
+        if mask.dim() == 3:
+            mask = mask.unsqueeze(-1)
             
-        # Out Shape: (B, history_window, num_patches + 1, E) and (B, history_window, E)
+        mask = mask.unsqueeze(1)
+        _, history_window, C, H, W = img_seq.shape
+
         if unroll:
-            memory_local, memory_global = self.image_encoder(inputs=img_seq, mask=mask)
-            memory_local = memory_local.view(b, history_window, memory_local.shape[1], memory_local.shape[2])
-            memory_global = memory_global.view(b, history_window, memory_global.shape[1])
+            img_seq = img_seq.view(-1, C, H, W)
+            print(mask.shape)
+            mask= mask.repeat(1, history_window, 1, 1, 1)
+            mask = mask.view(-1, H, W, 1)
+            mask = mask.permute(0, 3, 1, 2) # ViT takes channel first format
+
+            # Out Shape: (batch_size*history_window, num_patches + 1, E) and (batch_size*history_window, E)
+            memory_local, memory_global = self.image_encoder(x=img_seq, key_padding_mask=mask)
+            
+            # Out Shape: (batch_size, history_window, num_patches + 1, E) and (batch_size, history_window, E)
+            memory_local = memory_local.view(-1, history_window, memory_local.shape[1], memory_local.shape[2])
+            memory_global = memory_global.view(-1, history_window, memory_global.shape[1])
             
         else:
             memory_local = []
             memory_global = []
             for i in range(history_window):
-                mem_local, mem_global = self.image_encoder(inputs=img_seq[:, i, ...], mask=mask)
+                # Out Shape: (batch_size, num_patches + 1, E) and (batch_size, E)
+                mem_local, mem_global = self.image_encoder(x=img_seq[:, i, ...], key_padding_mask=mask)
                 memory_local.append(mem_local)
                 memory_global.append(mem_global)
-                
+            
+            # Out Shape: (batch_size, history_window, num_patches + 1, E) and (batch_size, history_window, E)
             memory_local = torch.cat(memory_local, dim=0).permute(1, 0, 2, 3)
             memory_global = torch.cat(memory_global, dim=0).permute(1, 0, 2)
             
@@ -131,7 +166,8 @@ class HumanPosePredictorModel(nn.Module):
         # Out Shape: (B, num_patches + 1, E) and (B, history_window, E)
         memory_local, memory_global = self.im_temporal_encoder(memory_local, memory_global)
         
-        return torch.cat([memory_local, memory_global], dim=1) # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
+        # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
+        return torch.cat([memory_local, memory_global], dim=1) 
         
     def forward(self, history: list, future: Union[list, None], is_teacher_forcing: bool=False):
         """Perform forward pass
@@ -158,16 +194,21 @@ class HumanPosePredictorModel(nn.Module):
         Raises:
             NotImplementedError: Need to implement forward pass
         """
-        torch._assert(input.dim() == 3, f"Expected (batch_size, num_joints, hidden_dim) got {input.shape}")
+        torch._assert(history[0].dim() == 5, f"Expected (batch_size, history_window, H, W, C) got {history[0].shape}")
+        torch._assert(history[1].dim() == 4, f"Expected (batch_size, history_window, num_joints, 2) got {history[1].shape}")
+        torch._assert(history[2].dim() == 3, f"Expected (batch_size, history_window, 2) got {history[2].shape}")
+        torch._assert(history[3].dim() == 3, f"Expected (batch_size, H, W) got {history[3].shape}")
+        torch._assert(future[0].dim() == 4, f"Expected (batch_size, future_window, num_joints, 2) got {future[0].shape}")
+        torch._assert(future[1].dim() == 3, f"Expected (batch_size, future_window, 2) got {future[1].shape}")
 
         ######################################################################
         # TODO: Need to implement a forward method for pose encoder
         # example:
         
-        img_seq = history[0]
-        b, history_window, H, W, C = img_seq.shape[1]
+        img_seq = history[0].float()
+        b, history_window, H, W, C = img_seq.shape
         
-        mask = history[3]
+        mask = history[3].float()
         if is_teacher_forcing:
             # Use concatenated history and future poses
 
@@ -197,7 +238,8 @@ class HumanPosePredictorModel(nn.Module):
         
         # Autoregressive decoder with "dual" conditioning
         # Currently uses only combined local and global features. Need to modify it later for further evaluation.
-        # Out Shape: (B, future_window, J, 2)
+        # Out Shape: (B, future_window + 1, J, 2)
+        
         
         out_poses = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, target=tgt_poses, is_teacher_forcing=is_teacher_forcing)
         

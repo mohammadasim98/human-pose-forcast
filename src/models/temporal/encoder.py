@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from functools import partial
 
-from models.temporal.sequential import MultiInputSequential
+from models.common.sequential import MultiInputSequential
 from models.temporal.global_attention import GlobalTemporalAttention
 from models.temporal.local_attention import LocalBackwardTemporalAttention, LocalForwardTemporalAttention
 
@@ -99,9 +99,15 @@ class TemporalEncoderBlock(nn.Module):
         
         if self.direction == "forward":
             local_result = self.local_forward_attention(local_feat)
+            
         elif self.direction == "backward":
             local_result = self.local_backward_attention(local_feat)
 
+        elif self.direction == "backward-forward":
+            local_result = self.local_backward_attention(local_feat)
+            local_feat[:, 0, ...] = local_result.unsqueeze(1)
+            local_result = self.local_forward_attention(local_feat)
+            
         global_result = self.global_attention(global_feat)
         
 
@@ -181,9 +187,7 @@ class TemporalEncoder(nn.Module):
             (batch_size, seq_length, num_feature, hidden_dim) got {local_feat.shape}")
         torch._assert(global_feat.dim() == 3, f"Expected Global Features of shape \
             (batch_size, seq_length, hidden_dim) got {global_feat.shape}")
-       
-        ######################################################################
-        # TODO: Need to implement a forward method for temporal encoder
+
         
         return self.layers(local_feat, global_feat)
         

@@ -89,7 +89,7 @@ class VisionTransformer(nn.Module):
         return padding_mask.bool()
     
     def _process_input(self, x: torch.Tensor) -> torch.Tensor:
-        """ Given an (N, H, W, C) image tensor, it returns an (N, S, E) tensor of tokens,
+        """ Given an (N, C, H, W) image tensor, it returns an (N, S, E) tensor of tokens,
             where N is batch size, S is number of tokens, and E is length of each token.
         """
 
@@ -120,7 +120,7 @@ class VisionTransformer(nn.Module):
         """_summary_
 
         Args:
-            x (torch.Tensor): Input (B*N, H, W, C) tensor
+            x (torch.Tensor): Input (B*N, C, H, W) tensor
 
         Returns:
             local (torch.Tensor): An output tensor of shape (B, N, H) with N as 

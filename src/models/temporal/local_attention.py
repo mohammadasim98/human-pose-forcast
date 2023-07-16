@@ -175,7 +175,6 @@ class LocalBackwardTemporalAttention(nn.Module):
         
         #######################################################################################
         # TODO: Need to implement a forward method for local backward temporal attention block
-        
         b, hw, nf, e = inputs.shape
 
         # Temporal attention on local features
@@ -183,9 +182,8 @@ class LocalBackwardTemporalAttention(nn.Module):
         
         # Use oldest feature sequence from history as the first query
         query = inputs[:, -1, :, :]        
-        
-        for i in range(hw-1, 1):
-            
+
+        for i in range(hw-1, 1, -1):
             # Update key and value
             key_value = inputs[:, i-1, :, :]
 

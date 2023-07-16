@@ -6,7 +6,7 @@ import torch
 from torch import nn
 import math
 
-class FourEncoding(nn.Module):
+class FourierEncoding(nn.Module):
     """Applies positional encoding to the input as described in 'Attention is all you need'"""
 
     def __int__(self,

@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 
+from typing import Union
 from functools import partial
-
 
 from models.vit.mlp import MLPBlock 
 from models.transformer.encoder import EncoderBlock, Encoder
+from models.common.sequential import MultiInputSequential
 
 class PoseEncoderBlock(nn.Module):
     """ Encode a pose keypoint sequence embeddings via Spatial
@@ -35,27 +36,37 @@ class PoseEncoderBlock(nn.Module):
 
         self.need_weights = need_weights 
         
-        #######################################################
-        # TODO: Need to implement a pose encoder block
-        # ...
-        #######################################################       
+    def _generate_key_padding_mask(self, relative_poses: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
-    def forward(self, input: torch.Tensor):
+    def forward(self, root_joints: torch.Tensor, relative_poses: torch.Tensor, key_padding_mask: Union[torch.Tensor, None]=None):
         """Perform forward pass
 
         Args:
-            inputs (torch.tensor): A (B, J, E) of embedding of each 2D pose keypoints.
+            root_joints (torch.tensor): An input of shape (batch_size*sequence_length,  E) 
+                or (batch_size, E)
+            relative_poses (torch.tensor): An input of shape (batch_size*sequence_length, num_joints, E) 
+                or (batch_size, num_joints, E)
 
         Raises:
             NotImplementedError: Need to implement forward pass
         """
-        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, {self.hidden_dim}) got {input.shape}")
+        torch._assert(relative_poses.dim() == 3, f"Expected (batch_size*sequence_length, num_joints, E) or (batch_size, num_joints, E) got {relative_poses.shape}")
+        torch._assert(root_joints.dim() == 2, f"Expected (batch_size*sequence_length, num_joints, E) or (batch_size, num_joints, E) got {root_joints.shape}")
         
-        ######################################################################
-        # TODO: Need to implement a forward method for pose encoder block
-        ######################################################################
-        raise NotImplementedError
+        _, num_joints, hidden_dim = relative_poses.shape
+
+        result = None
+        attention_weights = None 
+        input = torch.cat([root_joints.unsqueeze(1), relative_poses], dim=1)
+        x0 = self.ln_1(input)
+        x1, attention_weights = self.self_attention(x0, x0, x0, key_padding_mask=key_padding_mask, need_weights=self.need_weights)
+        x2 = input + x1
+        x3 = self.ln_2(x2)
+        x4 = self.mlp(x3)
+        result = x2 + x4
+
+        return result
     
     
 class PoseEncoder(nn.Module):
@@ -64,9 +75,13 @@ class PoseEncoder(nn.Module):
     
     def __init__(
         self, 
+        num_layers: int,
         num_heads: int, 
         hidden_dim: int,
-        dropout: float=0.0
+        mlp_dim: int,
+        norm_layer = partial(nn.LayerNorm, eps=1e-6),
+        dropout: float=0.0,
+        need_weights = False,
         ) -> None:
         
         super().__init__()
@@ -74,25 +89,27 @@ class PoseEncoder(nn.Module):
         #######################################################
         # TODO: Need to implement a pose encoder
         # self.block = PoseEncoderBlock(...)
-        # ...
-        #######################################################
-        raise NotImplementedError
+        layers = []
+        for i in range(num_layers):
+            layers.append(PoseEncoderBlock(num_heads, hidden_dim, mlp_dim, norm_layer, dropout, need_weights))
+        
+        self.layers = MultiInputSequential(*layers)
         
     def forward(self, root_joints: torch.Tensor, relative_poses: torch.Tensor):
         """Perform forward pass
 
         Args:
-            norm_pose (torch.tensor): A (B*N or B, J, E) of embedding of each 2D pose keypoints.
-            root (torch.tensor): A (B*N or B, E) of embedding of each 2D pose keypoints.
+            root_joints (torch.tensor): An input of shape (batch_size*sequence_length,  E) 
+                or (batch_size, E)
+            relative_poses (torch.tensor): An input of shape (batch_size*sequence_length, num_joints, E) 
+                or (batch_size, num_joints, E)
 
         Raises:
             NotImplementedError: Need to implement forward pass
         """
-        torch._assert(relative_poses.dim() == 4, f"Expected (batch_size*sequence_length, num_joints, hidden_dim) got {relative_poses.shape}")
-        torch._assert(root_joints.dim() == 3, f"Expected (batch_size*sequence_length, hidden_dim) got {root_joints.shape}")
+        torch._assert(relative_poses.dim() == 3, f"Expected (batch_size*sequence_length, num_joints, E) or (batch_size, num_joints, E) got {relative_poses.shape}")
+        torch._assert(root_joints.dim() == 2, f"Expected (batch_size*sequence_length, num_joints, E) or (batch_size, num_joints, E) got {root_joints.shape}")        
+        
+        return self.layers(root_joints, relative_poses)
 
-        ######################################################################
-        # TODO: Need to implement a forward method for pose encoder
-        ######################################################################
-        raise NotImplementedError
         

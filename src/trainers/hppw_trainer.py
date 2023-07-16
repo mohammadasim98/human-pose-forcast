@@ -5,7 +5,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from torchvision.utils import make_grid
-from .base import BaseTrainer
+from trainers.base import BaseTrainer
 from utils.io import MetricTracker
 
 import models.hppw as module_arch

@@ -6,7 +6,7 @@ from functools import partial
 
 from models.vit.mlp import MLPBlock
 from models.transformer.encoder import EncoderBlock, Encoder
-
+from models.temporal.encoder import TemporalEncoder
 
 class PoseDecoderBlock(nn.Module):
     """ Decode a pose keypoint sequence embeddings via Spatial
@@ -14,15 +14,15 @@ class PoseDecoderBlock(nn.Module):
     """
 
     def __init__(
-            self,
-            num_heads: int,
-            hidden_dim: int,
-            mlp_dim: int,
-            norm_layer=partial(nn.LayerNorm, eps=1e-6),
-            dropout: float = 0.0,
-            batch_first: bool = True,
-            need_weights=False,
-    ):
+        self,
+        num_heads: int,
+        hidden_dim: int,
+        mlp_dim: int,
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        dropout: float = 0.0,
+        batch_first: bool = True,
+        need_weights=False,
+    ) -> None:
         super().__init__()
         self.num_heads = num_heads
         self.hidden_dim = hidden_dim
@@ -67,10 +67,11 @@ class PoseDecoder(nn.Module):
             num_heads: int,
             hidden_dim: int,
             out_dim: int,
+            temporal: dict,
             dropout: float = 0.0,
             batch_first: bool = True,
             num_layers: int = 4,
-            norm_layer=partial(nn.LayerNorm, eps=1e-6)
+            norm_layer=partial(nn.LayerNorm, eps=1e-6),
     ) -> None:
         super().__init__()
         self.process_layer = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=batch_first)
@@ -81,6 +82,7 @@ class PoseDecoder(nn.Module):
         self.mlp = MLPBlock(hidden_dim, mlp_dim=out_dim)
         # Replace it with custom decoder to allow us to also configure whether to teacher-force during training
         self.decoder = nn.TransformerDecoder(self.decode_layer, num_layers, norm=norm_layer)
+        self.temporal_encoder = TemporalEncoder(**temporal["encoder"])
 
         #######################################################
         # TODO: Need to implement a pose decoder block
@@ -88,7 +90,7 @@ class PoseDecoder(nn.Module):
         # ...
         #######################################################
 
-    def generate_square_subsequent_mask(sz: int, device='cpu') -> torch.Tensor:
+    def _generate_square_subsequent_mask(sz: int, device='cpu') -> torch.Tensor:
         r"""Generate a square mask for the sequence. The masked positions are filled with float('-inf').
             Unmasked positions are filled with float(0.0).
         """
@@ -125,10 +127,10 @@ class PoseDecoder(nn.Module):
         Raises:
             NotImplementedError: Need to implement forward pass
         """
-        torch._assert(img_encoding.dim() == 3, f"Expected (batch_size, num_joints, hidden_dim) got {img_encoding.shape}")
-        torch._assert(pos_encoding.dim() == 3,
-                      f"Expected (batch_size, num_joints, hidden_dim) got {pos_encoding.shape}")
-
+        torch._assert(img_encoding.dim() == 3, f"Expected (batch_size, history_window + num_patches + 1, hidden_dim) got {img_encoding.shape}")
+        torch._assert(pos_encoding.dim() == 3, f"Expected (batch_size, num_joints + history_window, hidden_dim) got {pos_encoding.shape}")
+        torch._assert(tgt.dim() == 4, f"Expected (B, future_window + 1, num_joints + 1, hidden_dim) got {pos_encoding.shape}")
+        
         future_window_plus = tgt.shape[1] # 2nd dim is the sequence length including t=n i.e., future_window + 1
         memory = self.process_input(img_encoding, pos_encoding)
        
@@ -136,7 +138,8 @@ class PoseDecoder(nn.Module):
             # No Auto Regression, Pass the tgt as it is, with attention masks to prevent lookahead
             # Generate a (future_window x future_window) matrix mask with -inf at the upper triangular
             # and 0 at the lower. 
-            tgt_atten_mask = self.generate_square_subsequent_mask(future_window_plus) 
+            tgt_atten_mask = self._generate_square_subsequent_mask(future_window_plus)
+            tgt_poses = self.pose_spatiotemporal_temporal_encoder(tgt_poses) 
             result = self.decoder(tgt, memory, tgt_atten_mask=tgt_atten_mask)
 
         else:
@@ -145,6 +148,7 @@ class PoseDecoder(nn.Module):
             # Get the current pose as the initial input to decoder
             tgt_poses = tgt[:, 0, ...].unsueeze(1) 
             for _ in range(future_window_plus - 1): # Loop till future window excluding the pose encoding at t=n
+                tgt_poses = self.pose_spatiotemporal_temporal_encoder(tgt_poses)
                 result = self.decoder(tgt_poses, memory) 
                 
                 # Concatenate the latest prediction

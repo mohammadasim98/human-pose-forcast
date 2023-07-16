@@ -3,7 +3,7 @@ import os
 
 from abc import abstractmethod
 from numpy import inf
-from utils.utils import prepare_device
+from utils.io import prepare_device
 from logger import TensorboardWriter
 
 try:

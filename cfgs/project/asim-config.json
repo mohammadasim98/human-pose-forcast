@@ -5,49 +5,77 @@
     "arch": {
         "type": "HumanPosePredictorModel",
         "args": {
+            "root_path": "../..",
             "pose": {
-                "encoder":{
-                    "num_layers": 2,
-                    "num_heads": 12,
-                    "hidden_dim": 256,
-                    "mlp_dim": 512,
-                    "dropout": 0.0
+                "spatial": {
+                    "encoder":{
+                        "num_layers": 2,
+                        "num_heads": 8,
+                        "hidden_dim": 256,
+                        "mlp_dim": 512,
+                        "dropout": 0.0
+                    }
                 },
-                "decoder": {
-                    "num_layers": 4,
-                    "num_heads": 12,
-                    "hidden_dim": 256,
-                    "out_dim": 512,
-                    "dropout": 0.0
+                "spatiotemporal": {
+                    "spatial": {
+                        "decoder": {
+                            "num_layers": 4,
+                            "num_heads": 8,
+                            "hidden_dim": 256,
+                            "out_dim": 512,
+                            "dropout": 0.0
+                        }
+                    },
+                    "temporal": {
+                        "encoder": {
+                            "num_layers": 1,
+                            "num_heads": 8,
+                            "hidden_dim": 256,
+                            "mlp_dim": 512,
+                            "dropout": 0.0,
+                            "directions": ["backward-forward"]
+                        }
+                    }
+                },
+                "temporal": {
+                    "encoder": {
+                        "num_layers": 2,
+                        "num_heads": 8,
+                        "hidden_dim": 256,
+                        "mlp_dim": 512,
+                        "dropout": 0.0,
+                        "directions": ["backward", "forward"]
+                    }
                 }
             },
             "image": {
-                "encoder":{
-                    "image_size": 224, 
-                    "patch_size": 16,  
-                    "num_layers": 4, 
-                    "num_heads": 12,  
-                    "hidden_dim": 768,
-                    "mlp_dim": 3072,
-                    "dropout": 0.0,
-                    "total_layers": 12
-                }
-            },
-            "temporal": {
-                "encoder": {
-                    "num_layers": 2,
-                    "num_heads": 12,
-                    "hidden_dim": 256,
-                    "mlp_dim": 512,
-                    "dropout": 0.0,
-                    "directions": ["backward", "forward"]
+                "spatial": {
+                    "encoder":{
+                        "image_size": 224, 
+                        "patch_size": 16,  
+                        "num_layers": 4, 
+                        "num_heads": 12,  
+                        "hidden_dim": 768,
+                        "mlp_dim": 3072,
+                        "total_layers": 12
+                    }
+                },
+                "temporal": {
+                    "encoder": {
+                        "num_layers": 2,
+                        "num_heads": 12,
+                        "hidden_dim": 768,
+                        "mlp_dim": 512,
+                        "dropout": 0.0,
+                        "directions": ["backward", "forward"]
+                    }
                 }
             },
             "activation": {
                 "type": "ReLU",
                 "args": {}
             },
-            "vit_weights": "",
+            "vit_weights": "saved/models/vit.pth",
             "unroll": true
         }
     },
@@ -60,7 +88,7 @@
             "subsample": 1, 
             "history_window": 10, 
             "future_window": 10, 
-            "batch_size": 10, 
+            "batch_size": 1, 
             "shuffle": false, 
             "n_workers": 0, 
             "prefetch_factor": null
@@ -75,7 +103,7 @@
             "subsample": 1, 
             "history_window": 10, 
             "future_window": 10, 
-            "batch_size": 10, 
+            "batch_size": 1, 
             "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 0, 
@@ -107,20 +135,26 @@
     },
     "loss": "mpjpe",
     "metrics": [
-        "vim"
     ],
+    "lr_scheduler": {
+        "type": "StepLR",
+        "args": {
+            "step_size": 5,
+            "gamma": 0.8
+        }
+    },
     "trainer": {
         "type": "HPPWTrainer",
         "args": {},
 
         "epochs": 20,
-        
         "save_dir": "../../saved/",
         "save_period": 10,
         "eval_period": 5,
         "verbosity": 2
 
     },
-    "tensorboard": true
+    "tensorboard": true,
+    "wandb": false
 
 }
