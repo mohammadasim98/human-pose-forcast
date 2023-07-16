@@ -93,11 +93,11 @@ class HumanPosePredictorModel(nn.Module):
             memory_global = []
             for i in range(sequence_length):
                 mem_local, mem_global = self.pose_encoder(root_joints=root_joints[:, i, ...], relative_poses=relative_poses[:, i, ...])
-                memory_local.append(mem_local)
-                memory_global.append(mem_global)
+                memory_local.append(mem_local.unsqueeze(1))
+                memory_global.append(mem_global.unsqueeze(1))
                 
-            memory_local = torch.cat(memory_local, dim=0).permute(1, 0, 2, 3)
-            memory_global = torch.cat(memory_global, dim=0).permute(1, 0, 2)
+            memory_local = torch.cat(memory_local, dim=1)
+            memory_global = torch.cat(memory_global, dim=1)
             
         # Out Shape: (B, num_joints, E) and (B, history_window, E)
         memory_temp_local, memory_temp_global = self.pose_temporal_encoder(memory_local[:, :history_window, ...], memory_global[:, :history_window, ...])
@@ -136,11 +136,12 @@ class HumanPosePredictorModel(nn.Module):
         
         if mask.dim() == 3:
             mask = mask.unsqueeze(-1)
+        
             
-        mask = mask.unsqueeze(1)
         _, history_window, C, H, W = img_seq.shape
 
         if unroll:
+            mask = mask.unsqueeze(1)
             img_seq = img_seq.view(-1, C, H, W)
             mask= mask.repeat(1, history_window, 1, 1, 1)
             mask = mask.view(-1, H, W, 1)
@@ -156,15 +157,16 @@ class HumanPosePredictorModel(nn.Module):
         else:
             memory_local = []
             memory_global = []
+            mask = mask.permute(0, 3, 1, 2)
             for i in range(history_window):
                 # Out Shape: (batch_size, num_patches + 1, E) and (batch_size, E)
                 mem_local, mem_global = self.image_encoder(x=img_seq[:, i, ...], key_padding_mask=mask)
-                memory_local.append(mem_local)
-                memory_global.append(mem_global)
+                memory_local.append(mem_local.unsqueeze(1))
+                memory_global.append(mem_global.unsqueeze(1))
             
             # Out Shape: (batch_size, history_window, num_patches + 1, E) and (batch_size, history_window, E)
-            memory_local = torch.cat(memory_local, dim=0).permute(1, 0, 2, 3)
-            memory_global = torch.cat(memory_global, dim=0).permute(1, 0, 2)
+            memory_local = torch.cat(memory_local, dim=1)
+            memory_global = torch.cat(memory_global, dim=1)
             
         # Get local and global temporally encoded features of sequences of images and poses
         # Out Shape: (B, num_patches + 1, E) and (B, history_window, E)
