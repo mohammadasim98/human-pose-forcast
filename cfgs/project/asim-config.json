@@ -1,5 +1,5 @@
 {
-    "name": "CIFAR10_MLP",
+    "name": "HPPW",
     "n_gpu": 1,
 
     "arch": {
@@ -90,6 +90,7 @@
             "history_window": 10, 
             "future_window": 10, 
             "batch_size": 1, 
+            "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 0, 
             "prefetch_factor": null
@@ -106,7 +107,7 @@
             "future_window": 10, 
             "batch_size": 1, 
             "resize": [224, 224, 3],
-            "shuffle": false, 
+            "shuffle": true, 
             "n_workers": 0, 
             "prefetch_factor": null
         }
@@ -122,6 +123,7 @@
             "future_window": 15, 
             "batch_size": 1, 
             "shuffle": false, 
+            "resize": [224, 224, 3],
             "n_workers": 0, 
             "prefetch_factor": null
         }

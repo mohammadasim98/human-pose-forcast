@@ -20,7 +20,7 @@ class HumanPosePredictorModel(nn.Module):
         image: dict,
         activation: dict,
         future_window: int,
-        unroll: bool=True,
+        unroll: bool=True
     ) -> None:
         super().__init__()
         
@@ -53,7 +53,6 @@ class HumanPosePredictorModel(nn.Module):
         self.embed_relative_pose = FourierMLPEncoding(num_freq=128, d_model=self.pose_emb_dim, n_input_dim=3)
         
         self.linear = nn.Linear(self.pose_emb_dim, 3)
-        
 
         self.unroll = unroll
         
@@ -64,9 +63,9 @@ class HumanPosePredictorModel(nn.Module):
 
         Args:
             relative_poses (torch.Tensor) : An input of poses of shape 
-                (batch_size, history_window {+ future_window}, num_joints, E)
+                (batch_size, history_window {+ future_window}, num_joints, 3)
             root_joints (torch.Tensor): An input of rootjoints of shape 
-                (batch_size, history_window {+ future_window}, E)
+                (batch_size, history_window {+ future_window}, 3)
             
         Returns:
             memory (torch.Tensor): A (batch_size, num_joints + history_window, E) Spatiotemporally encoded memory 
@@ -75,24 +74,30 @@ class HumanPosePredictorModel(nn.Module):
         """
         torch._assert(relative_poses.dim() == 4, "relative_pose dimensions must be of length 4")
         torch._assert(root_joints.dim() == 3, "relative_pose dimensions must be of length 3")
+        
         # sequence_length can be combined with future_window + history_window or just history_window
         _, sequence_length, num_joints, dim = relative_poses.shape
         if unroll:
             relative_poses = relative_poses.view(-1, num_joints, dim)
             root_joints = root_joints.view(-1, dim)
             
+            relative_poses = self.embed_relative_pose(relative_poses)
+            root_joints = self.embed_root(root_joints)
+
             # Out Shape: (batch_size*sequence_length, num_joints, E) and (batch_size*sequence_length, E)
             memory_local, memory_global = self.pose_encoder(root_joints=root_joints, relative_poses=relative_poses)
             
             # Out Shape: (batch_size, sequence_length, num_joints, E) and (batch_size, sequence_length, E)
-            memory_local = memory_local.view(-1, sequence_length, num_joints, dim)
-            memory_global = memory_global.view(-1, sequence_length, dim)
+            memory_local = memory_local.view(-1, sequence_length, num_joints, self.pose_emb_dim)
+            memory_global = memory_global.view(-1, sequence_length, self.pose_emb_dim)
             
         else:
             memory_local = []
             memory_global = []
             for i in range(sequence_length):
-                mem_local, mem_global = self.pose_encoder(root_joints=root_joints[:, i, ...], relative_poses=relative_poses[:, i, ...])
+                relative_poses = self.embed_relative_pose(relative_poses[:, i, ...])
+                root_joints = self.embed_root(root_joints[:, i, ...])
+                mem_local, mem_global = self.pose_encoder(root_joints=root_joints, relative_poses=relative_poses)
                 memory_local.append(mem_local.unsqueeze(1))
                 memory_global.append(mem_global.unsqueeze(1))
                 
@@ -175,7 +180,7 @@ class HumanPosePredictorModel(nn.Module):
         # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
         return torch.cat([memory_local, memory_global], dim=1) 
         
-    def forward(self, history: list, future: Union[list, None], is_teacher_forcing: bool=False):
+    def forward(self, img_seq: torch.Tensor, relative_pose_seq: torch.Tensor, root_joint_seq: torch.Tensor, mask: Union[torch.Tensor, None]):
         """Perform forward pass
 
         Args:
@@ -200,58 +205,32 @@ class HumanPosePredictorModel(nn.Module):
         Raises:
             NotImplementedError: Need to implement forward pass
         """
-        torch._assert(history[0].dim() == 5, f"Expected (batch_size, history_window, H, W, C) got {history[0].shape}")
-        torch._assert(history[1].dim() == 4, f"Expected (batch_size, history_window, num_joints, 2) got {history[1].shape}")
-        torch._assert(history[2].dim() == 3, f"Expected (batch_size, history_window, 2) got {history[2].shape}")
-        torch._assert(history[3].dim() == 3, f"Expected (batch_size, H, W) got {history[3].shape}")
-        torch._assert(future[0].dim() == 4, f"Expected (batch_size, future_window, num_joints, 2) got {future[0].shape}")
-        torch._assert(future[1].dim() == 3, f"Expected (batch_size, future_window, 2) got {future[1].shape}")
+        torch._assert(img_seq.dim() == 5, f"Expected (batch_size, history_window, H, W, C) got {img_seq.shape}")
+        torch._assert(relative_pose_seq.dim() == 4, f"Expected (batch_size, history_window, num_joints, 2) got {relative_pose_seq.shape}")
+        torch._assert(root_joint_seq.dim() == 3, f"Expected (batch_size, history_window, 2) got {root_joint_seq.shape}")
+        torch._assert(mask.dim() == 3, f"Expected (batch_size, H, W) got {mask.shape}")
 
-        ######################################################################
-        # TODO: Need to implement a forward method for pose encoder
-        # example:
-        
-        img_seq = history[0].float()
-        b, history_window, H, W, C = img_seq.shape
-        
-        mask = history[3].float()
-        if is_teacher_forcing:
-            # Use concatenated history and future poses
 
-            # Out Shape: (B, future_window + history_window, J, 3)
-            relative_poses = torch.cat([history[1], future[0]])
 
-            # Out Shape: (B, future_window + history_window, 3)
-            root_joints = torch.cat([history[2], future[1]])
+        
+        mask = mask.float()
+        img_seq = img_seq.float()
+        
+        _, history_window, _, _, _ = img_seq.shape
+        _, history_window, num_joints, pose_dim = relative_pose_seq.shape 
 
-        else:
-            # Use only history for inference/test
-            # Shape: (B, history_window, J, 3) and (B, history_window, 3)
-            relative_poses = history[1]
-            root_joints = history[2]
-        
-        _, seq_length, num_joints, pose_dim = relative_poses.shape 
-        ##########################################################
-        # TODO: Need to Embed the root_joints and relative_poses
-        # Out Shape: (B, future_window + history_window, J, E) and (B, future_window + history_window, E)
-        
-        relative_poses = self.embed_relative_pose(relative_poses.view(-1, num_joints, pose_dim))
-        relative_poses = relative_poses.view(-1, seq_length, num_joints, self.pose_emb_dim)
-        root_joints = self.embed_root(root_joints)
-        
-        # Get combined* local and global features from sequences of images with padding mask
-        
-            
+
+        # Get combined* local and global features from sequences of images with padding mask    
         memory_img = self.image_encoding(img_seq=img_seq, mask=mask, unroll=self.unroll)
         
         # Get combined* local and global features from sequences of poses
-        memory_poses, tgt_poses = self.pose_encoding(relative_poses=relative_poses, root_joints=root_joints, history_window=history_window, unroll=self.unroll)
+        memory_poses, tgt_poses = self.pose_encoding(relative_poses=relative_pose_seq, root_joints=root_joint_seq, history_window=history_window, unroll=self.unroll)
         
         # Autoregressive decoder with "dual" conditioning
         # Currently uses only combined local and global features. Need to modify it later for further evaluation.
         # Out Shape: (B, future_window + 1, J, 2)
         
         
-        out_poses = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, tgt=tgt_poses, is_teacher_forcing=is_teacher_forcing)
+        out_poses = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, tgt=tgt_poses)
 
-        return self.linear(out_poses)
+        return self.linear(out_poses[:, 1:, ...])

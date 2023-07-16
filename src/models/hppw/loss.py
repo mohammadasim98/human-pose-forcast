@@ -1,5 +1,8 @@
 
+import torch
 
-
-def mpjpe():
-    pass
+def mpjpe(prediction, future):
+    
+    
+    
+    return torch.mean((prediction - future)**2)

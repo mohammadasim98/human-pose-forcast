@@ -32,8 +32,8 @@ class HPPWTrainer(BaseTrainer):
         # self.logger.info(self.model)
 
         # Prepare Losses
-        self.criterion = getattr(module_loss, config['loss'])
-
+        # self.criterion = getattr(module_loss, config['loss'])
+        self.criterion = torch.nn.MSELoss()
         # Prepare Optimizer
         trainable_params = filter(lambda p: p.requires_grad, self.model.parameters())
         self.optimizer = config.init_obj('optimizer', torch.optim, trainable_params)
@@ -69,13 +69,21 @@ class HPPWTrainer(BaseTrainer):
         
         for batch_idx, (history, future) in enumerate(self._train_loader):
 
-            history = history.to(self._device)
-            future = future.to(self._device)
+            
+            img_seq = history[0].to(self._device)
+            history_pose_seq = history[1].to(self._device)
+            history_root_seq = history[2].to(self._device)
+            history_mask = history[3].to(self._device)
+            
+            root_relative_poses = future[0].to(self._device)
+            root_joints = future[1].to(self._device)
 
             self.optimizer.zero_grad()
 
-            output = self.model(history, future)
-            loss = self.criterion(output, future)
+            output = self.model(img_seq, history_pose_seq, history_root_seq, history_mask)
+
+            future_poses = torch.cat([root_joints.unsqueeze(2), root_relative_poses], dim=2)          
+            loss = self.criterion(output, future_poses)
 
             loss.backward()
             self.optimizer.step()
@@ -87,12 +95,12 @@ class HPPWTrainer(BaseTrainer):
 
             pbar.set_description(f"Train Epoch: {self.current_epoch} Loss: {loss.item():.6f}")
 
-            if batch_idx % self.log_step == 0:
-                # self.logger.debug('Train Epoch: {} Loss: {:.6f}'.format(self.current_epoch, loss.item()))
+            # if batch_idx % self.log_step == 0:
+            #     # self.logger.debug('Train Epoch: {} Loss: {:.6f}'.format(self.current_epoch, loss.item()))
 
-                ## Log to Tensorboard
-                if self.writer is not None:
-                    self.writer.add_image('input_train', make_grid(history.cpu(), nrow=8, normalize=True))
+            #     ## Log to Tensorboard
+            #     if self.writer is not None:
+            #         self.writer.add_image('input_train', make_grid(history.cpu(), nrow=8, normalize=True))
 
             pbar.update(self._train_loader.batch_size)
 
@@ -126,19 +134,26 @@ class HPPWTrainer(BaseTrainer):
 
         for batch_idx, (history, future) in enumerate(loader): 
             
-            history = history.to(self._device)
-            future = future.to(self._device)
-
-            output = self.model(history, future)
-            loss = self.criterion(output, future)
-
+            img_seq = history[0].to(self._device)
+            history_pose_seq = history[1].to(self._device)
+            history_root_seq = history[2].to(self._device)
+            history_mask = history[3].to(self._device)
+            
+            root_relative_poses = future[0].to(self._device)
+            root_joints = future[1].to(self._device)
+            
+            output = self.model(img_seq, history_pose_seq, history_root_seq, history_mask)
+            
+            future_poses = torch.cat([root_joints.unsqueeze(2), root_relative_poses], dim=2)          
+            loss = self.criterion(output, future_poses)
+            
             if self.writer is not None: self.writer.set_step((self.current_epoch - 1) * len(loader) + batch_idx, 'valid')
             self.eval_metrics.update('loss', loss.item())
             for metric in self.metric_ftns:
                 self.eval_metrics.update(str(metric), metric.compute(output, future))
 
             pbar.set_description(f"Eval Loss: {loss.item():.6f}")
-            if self.writer is not None: self.writer.add_image('input_valid', make_grid(history.cpu(), nrow=8, normalize=True))
+            # if self.writer is not None: self.writer.add_image('input_valid', make_grid(history.cpu(), nrow=8, normalize=True))
             pbar.update(loader.batch_size)
                 
         # add histogram of model parameters to the tensorboard

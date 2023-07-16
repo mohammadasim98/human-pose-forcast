@@ -106,24 +106,26 @@ def annotate_pose(img, pose=None, color=(255, 0, 0), radius=5, thickness=1, text
 def visualize_tfrecord_dataloader(loader):
     for i, (history, future) in enumerate(loader):
         for sample in range((history[0].shape)[0]):
-            img = history[0][sample][0].numpy()
-            norm_pose = history[1][sample][0].numpy()
-            root_joint = history[2][sample][0].numpy()
-            mask = history[3][sample].numpy()
-            abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
-            annoted_img = annotate_pose(img=img, pose=abs_pose, color=(255, 0, 0), radius=2, thickness=2, text=False)
-            annoted_img = annotate_root(img=annoted_img,root=np.expand_dims(root_joint, 0), color=(0, 0, 255), thickness=3)
-            cv2.imshow("History Image", img)
-            cv2.imshow("History Mask", mask*255)
-            
-            norm_pose = future[0][sample][0].numpy()
-            root_joint = future[1][sample][0].numpy()
-            abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
-            annoted_img = annotate_pose(img=img, pose=abs_pose, color=(0, 255, 0), radius=2, thickness=2, text=False)
-            annoted_img = annotate_root(img=annoted_img,root=np.expand_dims(root_joint, 0), color=(0, 255, 255), thickness=3)
-            cv2.imshow("Future Image", img)
-            cv2.imshow("Future Mask", mask*255)
-            
+            for j in range(history[0][sample].shape[0]):
+                img = history[0][sample][j].numpy()
+                norm_pose = history[1][sample][j].numpy()
+                root_joint = history[2][sample][j].numpy()
+                mask = history[3][sample].numpy()
+                abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
+                annoted_img = annotate_pose(img=img, pose=abs_pose, color=(255, 0, 0), radius=2, thickness=2, text=False)
+                annoted_img = annotate_root(img=annoted_img,root=np.expand_dims(root_joint, 0), color=(0, 0, 255), thickness=3)
+                cv2.imshow("History Image", img)
+                cv2.imshow("History Mask", mask*255)
+                
+                norm_pose = future[0][sample][j].numpy()
+                root_joint = future[1][sample][j].numpy()
+                abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
+                annoted_img = annotate_pose(img=img, pose=abs_pose, color=(0, 255, 0), radius=2, thickness=2, text=False)
+                annoted_img = annotate_root(img=annoted_img,root=np.expand_dims(root_joint, 0), color=(0, 255, 255), thickness=3)
+                cv2.imshow("Future Image", img)
+                cv2.imshow("Future Mask", mask*255)
+                if cv2.waitKey(25) & 0xFF == ord('q'):
+                    break   
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 break     
         if cv2.waitKey(25) & 0xFF == ord('q'):
