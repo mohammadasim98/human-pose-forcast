@@ -31,6 +31,7 @@ class VisionTransformer(nn.Module):
         root_path: str,
         need_weights: bool=False,
         global_pool: str="avg",
+        device: str="cpu"
     ):
         super().__init__()
         torch._assert(num_layers < total_layers, "The number of layers to use cannot be larger than the total number of layers")
@@ -54,7 +55,7 @@ class VisionTransformer(nn.Module):
         seq_length = (image_size // patch_size) ** 2
 
         # Add a class token
-        self.class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
+        self.class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim)).to(device)
         seq_length += 1
 
         ## The entire encoder
@@ -85,6 +86,7 @@ class VisionTransformer(nn.Module):
         vit_weights = torch.load(ospj(root_path, vit_weights))
         self.load_state_dict(vit_weights, strict=True)
         del self.encoder.layers[num_layers:]
+        self.linear = nn.Linear(768, 256)
         # raise NotImplementedError
 
     def _process_padding_mask(self, padding_mask):
@@ -155,7 +157,7 @@ class VisionTransformer(nn.Module):
         cls_mask = cls_mask > 0
         key_padding_mask = torch.cat([cls_mask, key_padding_mask], dim=-1)
         results = self.encoder(x, key_padding_mask)
-
+        results = self.linear(results)
         # Take out the CLS token (in fact "tokens" because we have a batch)
         cls_token = results[:, 0]
         

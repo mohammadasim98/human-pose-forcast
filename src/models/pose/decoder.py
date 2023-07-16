@@ -87,8 +87,6 @@ class PoseDecoder(nn.Module):
         self.decoder = nn.TransformerDecoder(self.decode_layer, num_layers)
         self.temporal_encoder = TemporalEncoder(**temporal["encoder"], use_global=False)
 
-        self.img_linear = nn.Linear(img_dim, pose_dim)
-        
         self.future_window = future_window
         
         #######################################################
@@ -139,7 +137,6 @@ class PoseDecoder(nn.Module):
         torch._assert(tgt.dim() == 4, f"Expected (B, future_window + 1, num_joints + 1, hidden_dim) got {pos_encoding.shape}")
         future_window_plus = self.future_window + 1
         
-        img_encoding = self.img_linear(img_encoding)
         memory = self.process_input(img_encoding, pos_encoding)
 
         

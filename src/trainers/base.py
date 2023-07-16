@@ -136,14 +136,16 @@ class BaseTrainer:
                     metric_value = log[self.monitor_metric]
                     if self.monitor_mode == "min" and metric_value < prev_metric_value:
                         self.not_improved_count = 0
-                        path = os.path.join(self.checkpoint_dir, f'E{epoch}_best_val_model.pth')
-                        self.save_model(path=path)                        
+                        path = os.path.join(self.checkpoint_dir, f'best_model.pth')
+                        self.save_model(path=path)
+                        self.logger.info(f"Saving model with best metric at {path}")                        
                         prev_metric_value = metric_value
 
                     elif self.monitor_mode == "max" and metric_value > prev_metric_value:
                         self.not_improved_count = 0
-                        path = os.path.join(self.checkpoint_dir, f'E{epoch}_best_val_model.pth')
-                        self.save_model(path=path)                        
+                        path = os.path.join(self.checkpoint_dir, f'best_model.pth')
+                        self.save_model(path=path)      
+                        self.logger.info(f"Saving model with best metric at {path}")                                          
                         prev_metric_value = metric_value
                     
                     else:
@@ -167,7 +169,7 @@ class BaseTrainer:
 
             if self.current_epoch % self.save_period == 0:
                 # Just to regularly save the model every save_period epochs
-                path = os.path.join(self.checkpoint_dir, f'E{self.current_epoch}_model.pth')
+                path = os.path.join(self.checkpoint_dir, f'per_epoch_model.pth')
                 self.save_model(path=path)
         
         # Always save the last model

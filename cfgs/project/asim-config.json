@@ -52,20 +52,21 @@
                     "encoder":{
                         "image_size": 224, 
                         "patch_size": 16,  
-                        "num_layers": 4, 
+                        "num_layers": 2, 
                         "num_heads": 12,  
                         "hidden_dim": 768,
                         "mlp_dim": 3072,
                         "total_layers": 12,
                         "vit_weights": "saved/models/vit.pth",
-                        "root_path": "../.."
+                        "root_path": "../..",
+                        "device": "cpu"
                     }
                 },
                 "temporal": {
                     "encoder": {
                         "num_layers": 1,
                         "num_heads": 8,
-                        "hidden_dim": 768,
+                        "hidden_dim": 256,
                         "mlp_dim": 512,
                         "dropout": 0.0,
                         "directions": ["backward-forward"]
@@ -77,7 +78,7 @@
                 "args": {}
             },
             "unroll": true,
-            "future_window": 10
+            "future_window": 15
         }
     },
     "train_loader": {
@@ -87,11 +88,11 @@
             "n_scenes": 5, 
             "person_id": 0, 
             "subsample": 1, 
-            "history_window": 10, 
-            "future_window": 10, 
-            "batch_size": 1, 
+            "history_window": 15, 
+            "future_window": 15, 
+            "batch_size": 16, 
             "resize": [224, 224, 3],
-            "shuffle": false, 
+            "shuffle": true, 
             "n_workers": 0, 
             "prefetch_factor": null
         }
@@ -103,11 +104,11 @@
             "n_scenes": 5, 
             "person_id": 0, 
             "subsample": 1, 
-            "history_window": 10, 
-            "future_window": 10, 
-            "batch_size": 1, 
+            "history_window": 15, 
+            "future_window": 15, 
+            "batch_size": 16, 
             "resize": [224, 224, 3],
-            "shuffle": true, 
+            "shuffle": false, 
             "n_workers": 0, 
             "prefetch_factor": null
         }
@@ -119,21 +120,19 @@
             "n_scenes": 5, 
             "person_id": 0, 
             "subsample": 1, 
-            "history_window": 15, 
-            "future_window": 15, 
+            "history_window": 10, 
+            "future_window": 10, 
             "batch_size": 1, 
             "shuffle": false, 
-            "resize": [224, 224, 3],
             "n_workers": 0, 
-            "prefetch_factor": null
+            "prefetch_factor": null,
+            "resize": [224, 224, 3]
         }
     },
     "optimizer": {
-        "type": "Adam",
+        "type": "SGD",
         "args":{
-            "lr": 0.001,
-            "weight_decay": 0.001,
-            "amsgrad": true
+            "lr": 0.001
         }
     },
     "loss": "mpjpe",
@@ -152,10 +151,11 @@
 
         "epochs": 20,
         "save_dir": "../../saved/",
-        "save_period": 10,
-        "eval_period": 5,
-        "verbosity": 2
-
+        "save_period": 2,
+        "eval_period": 1,
+        "verbosity": 2,
+        "monitor": "min eval_loss",
+        "early_stop": 4       
     },
     "tensorboard": true,
     "wandb": false

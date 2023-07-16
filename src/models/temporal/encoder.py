@@ -109,7 +109,7 @@ class TemporalEncoderBlock(nn.Module):
 
         elif self.direction == "backward-forward":
             local_result = self.local_backward_attention(local_feat)
-            local_feat[:, 0, ...] = local_result.unsqueeze(1)
+            local_feat = torch.cat([local_feat[:, 1:, ...], local_result.unsqueeze(1)], dim=1)
             local_result = self.local_forward_attention(local_feat)
         
         if self.use_global:

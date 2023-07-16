@@ -211,8 +211,6 @@ class HumanPosePredictorModel(nn.Module):
         torch._assert(mask.dim() == 3, f"Expected (batch_size, H, W) got {mask.shape}")
 
 
-
-        
         mask = mask.float()
         img_seq = img_seq.float()
         
