@@ -5,7 +5,6 @@
     "arch": {
         "type": "HumanPosePredictorModel",
         "args": {
-            "root_path": "../..",
             "pose": {
                 "spatial": {
                     "encoder":{
@@ -19,7 +18,7 @@
                 "spatiotemporal": {
                     "spatial": {
                         "decoder": {
-                            "num_layers": 4,
+                            "num_layers": 2,
                             "num_heads": 8,
                             "hidden_dim": 256,
                             "out_dim": 512,
@@ -39,12 +38,12 @@
                 },
                 "temporal": {
                     "encoder": {
-                        "num_layers": 2,
+                        "num_layers": 1,
                         "num_heads": 8,
                         "hidden_dim": 256,
                         "mlp_dim": 512,
                         "dropout": 0.0,
-                        "directions": ["backward", "forward"]
+                        "directions": ["backward-forward"]
                     }
                 }
             },
@@ -57,17 +56,19 @@
                         "num_heads": 12,  
                         "hidden_dim": 768,
                         "mlp_dim": 3072,
-                        "total_layers": 12
+                        "total_layers": 12,
+                        "vit_weights": "saved/models/vit.pth",
+                        "root_path": "../.."
                     }
                 },
                 "temporal": {
                     "encoder": {
-                        "num_layers": 2,
-                        "num_heads": 12,
+                        "num_layers": 1,
+                        "num_heads": 8,
                         "hidden_dim": 768,
                         "mlp_dim": 512,
                         "dropout": 0.0,
-                        "directions": ["backward", "forward"]
+                        "directions": ["backward-forward"]
                     }
                 }
             },
@@ -75,8 +76,8 @@
                 "type": "ReLU",
                 "args": {}
             },
-            "vit_weights": "saved/models/vit.pth",
-            "unroll": true
+            "unroll": true,
+            "future_window": 10
         }
     },
     "train_loader": {

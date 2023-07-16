@@ -68,6 +68,9 @@ class PoseDecoder(nn.Module):
             hidden_dim: int,
             out_dim: int,
             temporal: dict,
+            future_window: int,
+            img_dim: int,
+            pose_dim: int,
             dropout: float = 0.0,
             batch_first: bool = True,
             num_layers: int = 4,
@@ -81,9 +84,13 @@ class PoseDecoder(nn.Module):
         self.ln = norm_layer(hidden_dim)
         self.mlp = MLPBlock(hidden_dim, mlp_dim=out_dim)
         # Replace it with custom decoder to allow us to also configure whether to teacher-force during training
-        self.decoder = nn.TransformerDecoder(self.decode_layer, num_layers, norm=norm_layer)
-        self.temporal_encoder = TemporalEncoder(**temporal["encoder"])
+        self.decoder = nn.TransformerDecoder(self.decode_layer, num_layers)
+        self.temporal_encoder = TemporalEncoder(**temporal["encoder"], use_global=False)
 
+        self.img_linear = nn.Linear(img_dim, pose_dim)
+        
+        self.future_window = future_window
+        
         #######################################################
         # TODO: Need to implement a pose decoder block
         # self.block = PoseDecoderBlock(...)
@@ -130,31 +137,36 @@ class PoseDecoder(nn.Module):
         torch._assert(img_encoding.dim() == 3, f"Expected (batch_size, history_window + num_patches + 1, hidden_dim) got {img_encoding.shape}")
         torch._assert(pos_encoding.dim() == 3, f"Expected (batch_size, num_joints + history_window, hidden_dim) got {pos_encoding.shape}")
         torch._assert(tgt.dim() == 4, f"Expected (B, future_window + 1, num_joints + 1, hidden_dim) got {pos_encoding.shape}")
+        future_window_plus = self.future_window + 1
         
-        future_window_plus = tgt.shape[1] # 2nd dim is the sequence length including t=n i.e., future_window + 1
+        img_encoding = self.img_linear(img_encoding)
         memory = self.process_input(img_encoding, pos_encoding)
-       
+
+        
         if is_teacher_forcing:
             # No Auto Regression, Pass the tgt as it is, with attention masks to prevent lookahead
             # Generate a (future_window x future_window) matrix mask with -inf at the upper triangular
             # and 0 at the lower. 
             tgt_atten_mask = self._generate_square_subsequent_mask(future_window_plus)
-            tgt_poses = self.pose_spatiotemporal_temporal_encoder(tgt_poses) 
+            tgt_poses = self.temporal_encoder(tgt_poses) 
             result = self.decoder(tgt, memory, tgt_atten_mask=tgt_atten_mask)
 
         else:
             # Auto Regression, no need for masking
             # Out Shape: (batch_size, 1, num_poses + 1, E)
             # Get the current pose as the initial input to decoder
-            tgt_poses = tgt[:, 0, ...].unsueeze(1) 
+            tgt_poses = tgt[:, 0, ...].unsqueeze(1) 
             for _ in range(future_window_plus - 1): # Loop till future window excluding the pose encoding at t=n
-                tgt_poses = self.pose_spatiotemporal_temporal_encoder(tgt_poses)
-                result = self.decoder(tgt_poses, memory) 
+                tgt_poses_temp = self.temporal_encoder(
+                    local_feat=tgt_poses, 
+                )      
+
+                result = self.decoder(tgt=tgt_poses_temp, memory=memory) 
                 
                 # Concatenate the latest prediction
-                tgt_poses = torch.cat([tgt_poses, result[:, -1, ...].unsqueeze(1)], dim=1)
+                tgt_poses = torch.cat([tgt_poses, result.unsqueeze(1)], dim=1)
                 
         # Linear Projection to out_dim        
-        result = self.ln(result)
+        result = self.ln(tgt_poses)
         result= self.mlp(result)
         return result

@@ -14,3 +14,12 @@ class MultiInputSequential(nn.Sequential):
             else:
                 inputs = module(inputs)
         return inputs
+    
+class PoseMultiInputSequential(nn.Sequential):
+    """ A custom nn.Sequential model for multiple inputs and outputs
+    """
+    def forward(self, pose, key_padding_mask):
+        for module in self._modules.values():
+            inputs = module(pose, key_padding_mask)
+
+        return inputs, key_padding_mask

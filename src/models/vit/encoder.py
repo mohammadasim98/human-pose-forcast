@@ -61,7 +61,6 @@ class Encoder(nn.Module):
     def __init__(
         self,
         seq_length: int,
-        num_layers: int,
         num_heads: int,
         hidden_dim: int,
         mlp_dim: int,
@@ -71,8 +70,6 @@ class Encoder(nn.Module):
     ):
         super().__init__()
         
-        torch._assert(num_layers < total_layers, "The number of layers to use cannot be larger than the total number of layers")
-        self.num_layers = num_layers
         
         # Note that batch_size is on the first dim because
         # we have batch_first=True in nn.MultiAttention() by default
@@ -99,7 +96,7 @@ class Encoder(nn.Module):
         input += self.pos_embedding
         
         # Take a subset of pretrained encoder layers
-        result = self.layers[:self.num_layers](input, key_padding_mask)
+        result = self.layers(input, key_padding_mask)
 
         result = self.ln(result) # Final layer norm
 

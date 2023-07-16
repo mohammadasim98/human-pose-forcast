@@ -8,9 +8,7 @@ from models.pose.encoder import PoseEncoder
 from models.temporal.encoder import TemporalEncoder
 from models.vit.model import VisionTransformer
 from models.pose.decoder import PoseDecoder
-from models.embedding.fourier import FourierEncoding
-
-from os.path import join as ospj
+from models.embedding.fourier import FourierEncoding, FourierMLPEncoding
 
 
 
@@ -18,11 +16,10 @@ class HumanPosePredictorModel(nn.Module):
     
     def __init__(
         self,
-        root_path,
         pose: dict,
         image: dict,
-        vit_weights: str,
         activation: dict,
+        future_window: int,
         unroll: bool=True,
     ) -> None:
         super().__init__()
@@ -43,23 +40,33 @@ class HumanPosePredictorModel(nn.Module):
         self.im_temporal_encoder = TemporalEncoder(**self.im_temporal_encoder_args)
         self.pose_temporal_encoder = TemporalEncoder(**self.pose_temporal_encoder_args)
         
-        self.decoder = PoseDecoder(**self.pose_spatiotemporal_decoder_args, temporal=self.pose_spatiotemporal_temporal_encoder_args)
+        self.decoder = PoseDecoder(
+            **self.pose_spatiotemporal_decoder_args, 
+            temporal=self.pose_spatiotemporal_temporal_encoder_args, 
+            future_window=future_window,
+            img_dim=image["spatial"]["encoder"]["hidden_dim"],
+            pose_dim=pose["spatial"]["encoder"]["hidden_dim"]
+            )
         
-        self.vit_weights = torch.load(ospj(root_path, vit_weights))
+        self.pose_emb_dim = pose["spatial"]["encoder"]["hidden_dim"]
+        self.embed_root = FourierMLPEncoding(num_freq=64, d_model=self.pose_emb_dim, n_input_dim=3)
+        self.embed_relative_pose = FourierMLPEncoding(num_freq=128, d_model=self.pose_emb_dim, n_input_dim=3)
+        
+        self.linear = nn.Linear(self.pose_emb_dim, 3)
+        
 
         self.unroll = unroll
         
-        # Load Vit weights
-        self.image_encoder.load_state_dict(self.vit_weights, strict=True)
+
     
     def pose_encoding(self, relative_poses, root_joints, history_window, unroll: bool=False):
         """ Perform spatial and temporal attention on poses
 
         Args:
             relative_poses (torch.Tensor) : An input of poses of shape 
-                (batch_size, history_window {+ future_window}, num_joints, 2)
+                (batch_size, history_window {+ future_window}, num_joints, E)
             root_joints (torch.Tensor): An input of rootjoints of shape 
-                (batch_size, history_window {+ future_window}, 2)
+                (batch_size, history_window {+ future_window}, E)
             
         Returns:
             memory (torch.Tensor): A (batch_size, num_joints + history_window, E) Spatiotemporally encoded memory 
@@ -68,10 +75,8 @@ class HumanPosePredictorModel(nn.Module):
         """
         torch._assert(relative_poses.dim() == 4, "relative_pose dimensions must be of length 4")
         torch._assert(root_joints.dim() == 3, "relative_pose dimensions must be of length 3")
-        
         # sequence_length can be combined with future_window + history_window or just history_window
         _, sequence_length, num_joints, dim = relative_poses.shape
-
         if unroll:
             relative_poses = relative_poses.view(-1, num_joints, dim)
             root_joints = root_joints.view(-1, dim)
@@ -99,15 +104,15 @@ class HumanPosePredictorModel(nn.Module):
         
         # concatenate along sequence dimension (B, num_joints + history_window, E)
         memory = torch.cat([memory_temp_local, memory_temp_global], dim=1) 
-        
+
         # Need to add -1 to also include the current pose features
         # This will allow to shift the output by 1 to the right and 
         # can act as a <start> token.
         # Return memory for conditioning the decoder
         # Return target poses for decoder from future including the current pose
-        # concatenate along num_joint  dimension (B, future_window + 1, num_joints + 1, E)
-        tgt_pose_feat = torch.cat([memory_local[:, history_window-1:, ...], memory_global[:, history_window-1:, ...]], dim=2)
-        
+        # concatenate along num_joint dimension (B, future_window + 1, num_joints + 1, E)
+        tgt_pose_feat = torch.cat([memory_global[:, history_window-1:, ...].unsqueeze(1), memory_local[:, history_window-1:, ...]], dim=2)
+
         return memory, tgt_pose_feat 
         
     
@@ -137,7 +142,6 @@ class HumanPosePredictorModel(nn.Module):
 
         if unroll:
             img_seq = img_seq.view(-1, C, H, W)
-            print(mask.shape)
             mask= mask.repeat(1, history_window, 1, 1, 1)
             mask = mask.view(-1, H, W, 1)
             mask = mask.permute(0, 3, 1, 2) # ViT takes channel first format
@@ -223,10 +227,15 @@ class HumanPosePredictorModel(nn.Module):
             # Shape: (B, history_window, J, 3) and (B, history_window, 3)
             relative_poses = history[1]
             root_joints = history[2]
-            
+        
+        _, seq_length, num_joints, pose_dim = relative_poses.shape 
         ##########################################################
         # TODO: Need to Embed the root_joints and relative_poses
         # Out Shape: (B, future_window + history_window, J, E) and (B, future_window + history_window, E)
+        
+        relative_poses = self.embed_relative_pose(relative_poses.view(-1, num_joints, pose_dim))
+        relative_poses = relative_poses.view(-1, seq_length, num_joints, self.pose_emb_dim)
+        root_joints = self.embed_root(root_joints)
         
         # Get combined* local and global features from sequences of images with padding mask
         
@@ -241,6 +250,6 @@ class HumanPosePredictorModel(nn.Module):
         # Out Shape: (B, future_window + 1, J, 2)
         
         
-        out_poses = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, target=tgt_poses, is_teacher_forcing=is_teacher_forcing)
-        
-        return out_poses
+        out_poses = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, tgt=tgt_poses, is_teacher_forcing=is_teacher_forcing)
+
+        return self.linear(out_poses)

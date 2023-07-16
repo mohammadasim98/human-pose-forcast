@@ -9,6 +9,7 @@ import torch.nn as nn
 from typing import Union
 from functools import partial
 from collections import OrderedDict
+from os.path import join as ospj
 
 from models.vit.encoder import Encoder
 
@@ -26,6 +27,8 @@ class VisionTransformer(nn.Module):
         hidden_dim: int,
         mlp_dim: int,
         total_layers: int,
+        vit_weights: str,
+        root_path: str,
         need_weights: bool=False,
         global_pool: str="avg",
     ):
@@ -57,7 +60,6 @@ class VisionTransformer(nn.Module):
         ## The entire encoder
         self.encoder = Encoder(
             seq_length,
-            num_layers,
             num_heads,
             hidden_dim,
             mlp_dim,
@@ -79,7 +81,10 @@ class VisionTransformer(nn.Module):
         # # ... 
         # # ...
             
-        
+        # Load Vit weights
+        vit_weights = torch.load(ospj(root_path, vit_weights))
+        self.load_state_dict(vit_weights, strict=True)
+        del self.encoder.layers[num_layers:]
         # raise NotImplementedError
 
     def _process_padding_mask(self, padding_mask):
