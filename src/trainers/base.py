@@ -223,11 +223,6 @@ class BaseTrainer:
         self.model.load_state_dict(torch.load(path))
         self.logger.info("Checkpoint loaded.")
 
-    """
-    The following save_checkpoint and resume_checkpoint are extra code given to save the training state.
-    You can use them to pause the training and resume it later. This is purely optional and it's not relevant
-    for the current assignment! You can safely ignore it ;)
-    """
 
     def save_checkpoint(self, path=None):
         """
@@ -249,18 +244,7 @@ class BaseTrainer:
         }
         torch.save(state, path)
         self.logger.info("Saving checkpoint: {} ...".format(path))
-        arch = type(self.model).__name__
-        state = {
-            'arch': arch,
-            'epoch': self.current_epoch,
-            'model': self.model.state_dict(),
-            'optimizer': self.optimizer.state_dict(),
-            'lr_scheduler': self.lr_scheduler.state_dict(),
-            'monitor_best': self.monitor_best,
-            'config': self.config
-        }
-        torch.save(state, path)
-        self.logger.info("Saving checkpoint: {} ...".format(path))
+
 
     def resume_checkpoint(self, resume_path=None):
         """
@@ -269,37 +253,6 @@ class BaseTrainer:
 
         :param path: Checkpoint path to be resumed
         """
-        resume_path = str(resume_path)
-        self.logger.info("Loading checkpoint: {} ...".format(resume_path))
-        checkpoint = torch.load(resume_path)
-        self.start_epoch = checkpoint['epoch'] + 1
-        self.monitor_best = checkpoint['monitor_best']
-
-        # load architecture params from checkpoint.
-        if checkpoint['config']['arch'] != self.config['arch']:
-            self.logger.warning("Warning: Architecture configuration given in config file is different from that of "
-                                "checkpoint. This may yield an exception while state_dict is being loaded.")
-        missing_keys, unexpected_keys = self.model.load_state_dict(checkpoint['model'], strict=False)
-        if len(missing_keys) > 0:
-            self.logger.warning(f"[WARNING] missing keys: {missing_keys}")
-        if len(unexpected_keys) > 0:
-            self.logger.warning(f"[WARNING] unexpected keys: {unexpected_keys}")
-
-        # load optimizer state from checkpoint only when optimizer type is not changed.
-        if checkpoint['config']['optimizer']['type'] != self.config['optimizer']['type']:
-            self.logger.warning("Warning: Optimizer type given in config file is different from that of checkpoint. "
-                                "Optimizer parameters not being resumed.")
-        else:
-            self.optimizer.load_state_dict(checkpoint['optimizer'])
-
-        # load lr_scheduler state from checkpoint only when lr_scheduler type is not changed.
-        if checkpoint['config']['lr_scheduler']['type'] != self.config['lr_scheduler']['type']:
-            self.logger.warning("Warning: lr_scheduler type given in config file is different from that of checkpoint. "
-                                "lr_scheduler parameters not being resumed.")
-        else:
-            self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
-
-        self.logger.info("Checkpoint loaded. Resume training from epoch {}".format(self.start_epoch))
         resume_path = str(resume_path)
         self.logger.info("Loading checkpoint: {} ...".format(resume_path))
         checkpoint = torch.load(resume_path)
