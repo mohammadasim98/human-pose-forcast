@@ -1,0 +1,162 @@
+{
+    "name": "HPPW",
+    "n_gpu": 1,
+
+    "arch": {
+        "type": "HumanPosePredictorModel",
+        "args": {
+            "pose": {
+                "spatial": {
+                    "encoder":{
+                        "num_layers": 2,
+                        "num_heads": 8,
+                        "hidden_dim": 256,
+                        "mlp_dim": 512,
+                        "dropout": 0.0
+                    }
+                },
+                "spatiotemporal": {
+                    "spatial": {
+                        "decoder": {
+                            "num_layers": 2,
+                            "num_heads": 8,
+                            "hidden_dim": 256,
+                            "out_dim": 512,
+                            "dropout": 0.0
+                        }
+                    },
+                    "temporal": {
+                        "encoder": {
+                            "num_layers": 1,
+                            "num_heads": 8,
+                            "hidden_dim": 256,
+                            "mlp_dim": 512,
+                            "dropout": 0.0,
+                            "directions": ["backward-forward"]
+                        }
+                    }
+                },
+                "temporal": {
+                    "encoder": {
+                        "num_layers": 1,
+                        "num_heads": 8,
+                        "hidden_dim": 256,
+                        "mlp_dim": 512,
+                        "dropout": 0.0,
+                        "directions": ["backward-forward"]
+                    }
+                }
+            },
+            "image": {
+                "spatial": {
+                    "encoder":{
+                        "image_size": 224, 
+                        "patch_size": 16,  
+                        "num_layers": 2, 
+                        "num_heads": 12,  
+                        "hidden_dim": 768,
+                        "mlp_dim": 3072,
+                        "total_layers": 12,
+                        "vit_weights": "saved/models/vit.pth",
+                        "root_path": "/content/drive/MyDrive/human-pose-prediction-in-the-wild"
+                    }
+                },
+                "temporal": {
+                    "encoder": {
+                        "num_layers": 1,
+                        "num_heads": 8,
+                        "hidden_dim": 256,
+                        "mlp_dim": 512,
+                        "dropout": 0.0,
+                        "directions": ["backward-forward"]
+                    }
+                }
+            },
+            "activation": {
+                "type": "ReLU",
+                "args": {}
+            },
+            "unroll": true,
+            "future_window": 15
+        }
+    },
+    "train_loader": {
+        "type": "ThreeDPWTFRecordDataset",
+        "args":{
+            "data_path": "/content/drive/MyDrive/human-pose-prediction-in-the-wild/data/3DPWPreprocessedTFRecord/train.tfrecord", 
+            "n_scenes": 5, 
+            "person_id": 0, 
+            "subsample": 1, 
+            "history_window": 15, 
+            "future_window": 15, 
+            "batch_size": 16, 
+            "resize": [224, 224, 3],
+            "shuffle": true, 
+            "n_workers": 0, 
+            "prefetch_factor": null
+        }
+    },
+    "validation_loader": {
+        "type": "ThreeDPWTFRecordDataset",
+        "args":{
+            "data_path": "/content/drive/MyDrive/human-pose-prediction-in-the-wild/data/3DPWPreprocessedTFRecord/validation.tfrecord", 
+            "n_scenes": 5, 
+            "person_id": 0, 
+            "subsample": 1, 
+            "history_window": 15, 
+            "future_window": 15, 
+            "batch_size": 16, 
+            "resize": [224, 224, 3],
+            "shuffle": false, 
+            "n_workers": 0, 
+            "prefetch_factor": null
+        }
+    },
+    "test_loader": {
+        "type": "ThreeDPWTFRecordDataset",
+        "args":{
+            "data_path": "/content/drive/MyDrive/human-pose-prediction-in-the-wild/data/3DPWPreprocessedTFRecord/test.tfrecord", 
+            "n_scenes": 5, 
+            "person_id": 0, 
+            "subsample": 1, 
+            "history_window": 10, 
+            "future_window": 10, 
+            "batch_size": 1, 
+            "shuffle": false, 
+            "n_workers": 0, 
+            "prefetch_factor": null,
+            "resize": [224, 224, 3]
+        }
+    },
+    "optimizer": {
+        "type": "SGD",
+        "args":{
+            "lr": 0.001
+        }
+    },
+    "loss": "mpjpe",
+    "metrics": [
+    ],
+    "lr_scheduler": {
+        "type": "StepLR",
+        "args": {
+            "step_size": 5,
+            "gamma": 0.8
+        }
+    },
+    "trainer": {
+        "type": "HPPWTrainer",
+        "args": {},
+
+        "epochs": 20,
+        "save_dir": "/content/drive/MyDrive/human-pose-prediction-in-the-wild/saved/",
+        "save_period": 2,
+        "eval_period": 1,
+        "verbosity": 2,
+        "monitor": "min eval_loss",
+        "early_stop": 4       
+    },
+    "tensorboard": true,
+    "wandb": false
+
+}
