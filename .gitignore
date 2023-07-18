@@ -11,6 +11,10 @@ __pycache__/
 # Data
 /data/
 
+# Notebooks
+/src/notebooks/
+
+
 # Dont upload /saved/models
 /saved/models
 
