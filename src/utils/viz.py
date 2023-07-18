@@ -5,12 +5,12 @@ import numpy as np
 
 from builtins import range
 from math import sqrt, ceil
-
+import matplotlib.pyplot as plt
 
 from utils.transforms import cvt_absolute_pose
 
 
-CONNECTIONS = [
+CONNECTIONS_2D = [
     [1, 2],
     [2, 3],
     [3, 4],
@@ -31,7 +31,34 @@ CONNECTIONS = [
     [0, 1],
     [8, 11]
 ]
-def annotate_root(img, root=None, color=(0, 0, 255), radius=5, thickness=1, text=False):
+
+CONNECTIONS_3D = [
+    [15, 12],
+    [9, 12],
+    [13, 9],
+    [14, 9],
+    [16, 13],
+    [17, 14],
+    [18, 16],
+    [19, 17],
+    [20, 18],
+    [21, 19],
+    [23, 21],
+    [20, 22],
+    [9, 6],
+    [6, 3],
+    [3, 0],
+    [1, 0],
+    [2, 0],
+    [4, 1],
+    [5, 2],
+    [5, 8],
+    [4, 7],
+    [7, 10],
+    [8, 11]
+
+]
+def annotate_root_2d(img, root=None, color=(0, 0, 255), radius=5, thickness=1, text=False):
     """Annotate the given image with given the root joint 
 
     Args:
@@ -63,7 +90,7 @@ def annotate_root(img, root=None, color=(0, 0, 255), radius=5, thickness=1, text
     return img
 
 
-def annotate_pose(img, pose=None, color=(255, 0, 0), radius=5, thickness=1, text=False):
+def annotate_pose_2d(img, pose=None, color=(255, 0, 0), radius=5, thickness=1, text=False):
     """Annotate the given image with absolute pose-keypoints.
 
     Args:
@@ -94,7 +121,7 @@ def annotate_pose(img, pose=None, color=(255, 0, 0), radius=5, thickness=1, text
                 
                 cv2.circle(img, pose[human_id,  k, :2].tolist(), radius, color, thickness)
                 
-        for conn in CONNECTIONS:
+        for conn in CONNECTIONS_2D:
             start = pose[human_id, conn[0], :2]
             end = pose[human_id, conn[1], :2]
             if (start[0] == 0 and start[1] == 0) or (end[0] == 0 and end[1] == 0):
@@ -102,29 +129,58 @@ def annotate_pose(img, pose=None, color=(255, 0, 0), radius=5, thickness=1, text
             cv2.line(img, start, end, color=color, thickness=thickness) 
     return img
 
+def vizualize_3d(ax, fig, pose_3d=None, trans=None):
+    ax.cla()
+    if trans is not None:
+        ax.scatter(trans[0], trans[1], trans[2])
+    
 
-def visualize_tfrecord_dataloader(loader):
+    
+    if pose_3d is not None:
+        for connection in CONNECTIONS_3D:
+            start = connection[0]
+            end = connection[1]
+            line_x = [pose_3d[start, 0], pose_3d[end, 0]]                 
+            line_y = [pose_3d[start, 1], pose_3d[end, 1]]                 
+            line_z = [pose_3d[start, 2], pose_3d[end, 2]]                 
+            ax.plot(line_x, line_y, zs=line_z, figure=fig, linewidth=2)
+    ax.axes.set_xlim3d(left=-3, right=3)
+    ax.axes.set_ylim3d(bottom=-3, top=3) 
+    ax.axes.set_zlim3d(bottom=-3, top=3)    
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("z")
+    plt.draw()
+
+def visualize_tfrecord_dataloader(loader, viz_3d: bool=True):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    fig.show()
     for i, (history, future) in enumerate(loader):
         for sample in range((history[0].shape)[0]):
             img = history[0][sample][0].numpy()
             norm_pose = history[1][sample][0].numpy()
             root_joint = history[2][sample][0].numpy() * 224
-            print(root_joint.shape)
             mask = history[3][sample].numpy()
+            pose_3d = history[4][sample][0].numpy()
+            trans_3d = history[5][sample][0].numpy()
+            
             abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
-            annoted_img = annotate_pose(img=img, pose=abs_pose, color=(255, 0, 0), radius=2, thickness=2, text=False)
-            annoted_img = annotate_root(img=annoted_img,root=np.expand_dims(root_joint, 0), color=(0, 0, 255), thickness=3)
+            annoted_img = annotate_pose_2d(img=img, pose=abs_pose, color=(255, 0, 0), radius=2, thickness=2, text=False)
+            annoted_img = annotate_root_2d(img=annoted_img,root=np.expand_dims(root_joint, 0), color=(0, 0, 255), thickness=3)
             cv2.imshow("History Image", img)
             cv2.imshow("History Mask", mask*255)
             
             norm_pose = future[0][sample][0].numpy()
             root_joint = future[1][sample][0].numpy()*224
             abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
-            annoted_img = annotate_pose(img=img, pose=abs_pose, color=(0, 255, 0), radius=2, thickness=2, text=False)
-            annoted_img = annotate_root(img=annoted_img,root=np.expand_dims(root_joint, 0), color=(0, 255, 255), thickness=3)
+            annoted_img = annotate_pose_2d(img=img, pose=abs_pose, color=(0, 255, 0), radius=2, thickness=2, text=False)
+            annoted_img = annotate_root_2d(img=annoted_img,root=np.expand_dims(root_joint, 0), color=(0, 255, 255), thickness=3)
             cv2.imshow("Future Image", img)
             cv2.imshow("Future Mask", mask*255)
             
+            if viz_3d:
+                vizualize_3d(ax, fig, pose_3d, trans_3d)
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 break     
         if cv2.waitKey(25) & 0xFF == ord('q'):

@@ -52,9 +52,11 @@ class ThreeDPWTFRecordDataset():
             'frames': "int", # int
             'image_raw': "byte", # np.uint8
             'pmask': "byte", # np.uint8
-            'norm_poses': "byte", # np.float32
-            'root_joints': "byte", # np.int32
-            'abs_poses': "byte", # np.int32
+            '2d_norm_poses': "byte", # np.float32
+            '2d_root_joints': "byte", # np.int32
+            '2d_poses': "byte", # np.int32
+            '3d_poses': "byte", # np.float32
+            'trans': "byte", # np.float32
         }
         
         self.history_window = history_window
@@ -93,20 +95,24 @@ class ThreeDPWTFRecordDataset():
         """
         flatten_image = np.frombuffer(features["image_raw"], dtype=np.uint8)
         flatten_mask = np.frombuffer(features["pmask"], dtype=np.uint8)
-        flatten_norm_pose = np.frombuffer(features["norm_poses"], dtype=np.float32)
-        flatten_root_joint = np.frombuffer(features["root_joints"], dtype=np.int32)
+        flatten_norm_pose_2d = np.frombuffer(features["2d_norm_poses"], dtype=np.float32)
+        flatten_root_joint_2d = np.frombuffer(features["2d_root_joints"], dtype=np.int32)
+        flatten_poses_3d = np.frombuffer(features["3d_poses"], dtype=np.float32)
+        flatten_trans_3d = np.frombuffer(features["trans"], dtype=np.float32)
 
         image_strings = np.reshape(flatten_image, (features["frames"][0], -1))
         mask = np.reshape(flatten_mask, (features["height"][0], features["width"][0], -1))
 
-        norm_pose = np.reshape(flatten_norm_pose, (-1, features["frames"][0], 18, 3))
-        root_joint = np.reshape(flatten_root_joint, (-1, features["frames"][0], 3))    
+        norm_pose_2d = np.reshape(flatten_norm_pose_2d, (-1, features["frames"][0], 18, 3))[..., :2]
+        root_joint_2d = np.reshape(flatten_root_joint_2d, (-1, features["frames"][0], 3))[..., :2]    
+        poses_3d = np.reshape(flatten_poses_3d, (-1, features["frames"][0], 24, 3))    
+        trans_3d = np.reshape(flatten_trans_3d, (-1, features["frames"][0], 3))    
         
         if self.resize is not None:
             mask = self.resize_mask(mask)
-            root_joint = self.resize_root(root_joint, (features["height"][0], features["width"][0], 3))
+            root_joint_2d = self.resize_root(root_joint_2d, (features["height"][0], features["width"][0], 3))
 
-        return features["frames"][0], image_strings, mask, norm_pose, root_joint
+        return features["frames"][0], image_strings, mask, norm_pose_2d, root_joint_2d, poses_3d, trans_3d
 
     def _cache(self):
         """ Cache the dataset containing jpeg encoded image strings for memory efficiency.
@@ -134,26 +140,33 @@ class ThreeDPWTFRecordDataset():
 
         Args:
             data (typle(int, list(str), numpy.ndarray, numpy.ndarray, numpy.ndarray)): 
-                An input list of [frames, image_strings, mask, norm_pose, root_joint] to be windowed. 
+                An input list of [frames, image_strings, mask, norm_pose_2d, root_joints_2d, poses_3d] to be windowed. 
 
         Returns:
             history (list(numpy.ndarray, numpy.ndarray, numpy.ndarray, numpy.ndarray)): 
-                A list of historical windowed items i.e. [image_strings, norm_poses, root_joints, mask]
+                A list of historical windowed items i.e. [image_strings, norm_pose_2d, root_joints_2d, mask, poses_3d]
             future (list(numpy.ndarray, numpy.ndarray, )): 
-                A list of future windowed items i.e. [norm_poses, root_joints]
+                A list of future windowed items i.e. [norm_pose_2d, root_joints_2d]
         """
         # Get complete data for a single scene
-        frames, image_strings, mask, norm_pose, root_joint = data
+        frames, image_strings, mask, norm_pose_2d, root_joints_2d, poses_3d, trans_3d = data
+        
         sub_frames = frames // self.subsample
         idx = np.linspace(0, frames-1, sub_frames).astype(int)
+        
         image_strings = image_strings[idx]
-        norm_pose = norm_pose[:, idx, :, :]
-        root_joint = root_joint[:, idx, :]
+        
+        norm_pose_2d = norm_pose_2d[:, idx, :, :]
+        root_joints_2d = root_joints_2d[:, idx, :]
+        
+        poses_3d = poses_3d[:, idx, :, :]
+        trans_3d = trans_3d[:, idx, :]
+        
         # Define number of windowed data for a single scene
         num = sub_frames - self.history_window - self.future_window + 1
         
         # Make sure in case of 1 visible person, the id does not exceed it.
-        person_id = self.person_id if self.person_id < norm_pose.shape[0] else norm_pose.shape[0] - 1   
+        person_id = self.person_id if self.person_id < norm_pose_2d.shape[0] else norm_pose_2d.shape[0] - 1   
         
         history = []
         future = []
@@ -162,11 +175,11 @@ class ThreeDPWTFRecordDataset():
         for i in range(0, num):
             start = i
             end = self.history_window + start
-            history.append([image_strings[start:end], norm_pose[person_id, start:end, :, :], root_joint[person_id, start:end, :], mask])
+            history.append([image_strings[start:end], norm_pose_2d[person_id, start:end, :, :], root_joints_2d[person_id, start:end, :], mask, poses_3d[person_id, start:end, :, :], trans_3d[person_id, start:end, :]])
 
             start = end
             end = self.future_window + start
-            future.append([image_strings[start:end], norm_pose[person_id, start:end, :, :], root_joint[person_id, start:end, :], mask])
+            future.append([image_strings[start:end], norm_pose_2d[person_id, start:end, :, :], root_joints_2d[person_id, start:end, :], mask])
 
         return history, future
     
@@ -223,19 +236,18 @@ class ThreeDPWTFRecordDataset():
     def resize_root(self, root, shape):
         """Resize root.
         Args:
-            img (numpy.ndarray): A (N, W, H, 3) numpy array.
-            root (numpy.ndarray): A (np, N, 3) numpy array.
+            img (numpy.ndarray): A (N, W, H, 2) numpy array.
+            root (numpy.ndarray): A (np, N, 2) numpy array.
 
         Returns:
-            numpy.ndarray: A (np, N, 3) rescaled pose with np number of people.
+            numpy.ndarray: A (np, N, 2) rescaled pose with np number of people.
         """
         factor = np.array(self.resize) / np.array(shape)
-        rescaled_pose = root*np.tile(np.expand_dims([*factor[:2][::-1], factor[2]], axis=(0,1)), (1, root.shape[1], 1))
+        rescaled_pose = root*np.tile(np.expand_dims([*factor[:2][::-1]], axis=(0,1)), (1, root.shape[1], 1))
         if self.norm_root:
             resized_x = np.expand_dims(rescaled_pose[..., 0] / self.resize[0], axis=-1)
             resized_y = np.expand_dims(rescaled_pose[..., 1] / self.resize[1], axis=-1)
-            z = np.expand_dims(rescaled_pose[..., 2], axis=-1)
-            rescaled_pose = np.concatenate([resized_x, resized_y, z], axis=-1) 
+            rescaled_pose = np.concatenate([resized_x, resized_y], axis=-1) 
             return rescaled_pose
         else:
             return rescaled_pose.astype(int)
@@ -248,14 +260,14 @@ class ThreeDPWTFRecordDataset():
 
         Returns:
             history (list(numpy.ndarray, numpy.ndarray, numpy.ndarray, numpy.ndarray)):  
-                Output representing history [image, norm_poses, root_joints, mask].
+                Output representing history [image, norm_poses_2d, root_joints_2d, mask].
             future (list(numpy.ndarray, numpy.ndarray)): 
-                Output representing future [norm_poses, root_joints].
+                Output representing future [norm_poses_2d, root_joints_2d].
         """
         img_list = []
 
         # Get a single windowed example from history
-        img_strings, norm_poses, root_joints, mask = self.history_data_list[index]
+        img_strings, norm_poses_2d, root_joints_2d, mask, poses_3d, trans_3d = self.history_data_list[index]
         
         # Decode the jpeg encoded image string
         for string in img_strings:
@@ -267,19 +279,19 @@ class ThreeDPWTFRecordDataset():
             img_list.append(img)
  
         imgs = np.array(img_list)
-        history = [imgs, norm_poses, root_joints, mask]  
+        history = [imgs, norm_poses_2d, root_joints_2d, mask, poses_3d, trans_3d]  
         
         img_list = []
-        _, norm_poses, root_joints, mask = self.future_data_list[index]
+        _, norm_poses_2d, root_joints_2d, mask = self.future_data_list[index]
         
         # Not need during training or inferencing (Only for verifying the sequence consitency)
         # for string in img_strings:
         #     img_list.append(self.decode_jpeg(img_string))
         #
         # imgs = np.array(img_list)
-        # future = [imgs, norm_poses, root_joints, mask]  
+        # future = [imgs, norm_poses_2d, root_joints_2d, mask]  
         
-        future = [norm_poses, root_joints]  
+        future = [norm_poses_2d, root_joints_2d]  
         
         return history, future
     
