@@ -87,9 +87,9 @@
             "subsample": 1, 
             "history_window": 15, 
             "future_window": 15, 
-            "batch_size": 16, 
+            "batch_size": 1, 
             "resize": [224, 224, 3],
-            "shuffle": true, 
+            "shuffle": false, 
             "n_workers": 0, 
             "prefetch_factor": null
         }
@@ -101,9 +101,9 @@
             "n_scenes": 5, 
             "person_id": 0, 
             "subsample": 1, 
-            "history_window": 15, 
-            "future_window": 15, 
-            "batch_size": 16, 
+            "history_window": 10, 
+            "future_window": 10, 
+            "batch_size": 1, 
             "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 0, 
@@ -120,10 +120,10 @@
             "history_window": 10, 
             "future_window": 10, 
             "batch_size": 1, 
+            "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 0, 
-            "prefetch_factor": null,
-            "resize": [224, 224, 3]
+            "prefetch_factor": null
         }
     },
     "optimizer": {
@@ -154,7 +154,7 @@
         "monitor": "min eval_loss",
         "early_stop": 4       
     },
-    "tensorboard": true,
+    "tensorboard": false,
     "wandb": false
 
 }

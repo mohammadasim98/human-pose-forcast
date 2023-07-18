@@ -123,10 +123,10 @@
             "history_window": 15, 
             "future_window": 15, 
             "batch_size": 1, 
+            "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 8, 
-            "prefetch_factor": 2,
-            "resize": [224, 224, 3]
+            "prefetch_factor": 2
         }
     },
     "optimizer": {
