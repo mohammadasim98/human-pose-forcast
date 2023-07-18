@@ -128,7 +128,6 @@ class TemporalEncoder(nn.Module):
     
     def __init__(
         self, 
-        num_layers: int,
         num_heads: int, 
         hidden_dim: int,
         mlp_dim: int,
@@ -153,7 +152,6 @@ class TemporalEncoder(nn.Module):
             need_weights (bool, optional): If true, return attention weights (not configured for now). 
                 Defaults to False.
         """
-        torch._assert(num_layers == len(directions), "length of directions must be equal to the num_layers")
         super().__init__()
         
         self.hidden_dim = hidden_dim
@@ -162,7 +160,7 @@ class TemporalEncoder(nn.Module):
 
         layers = []
         
-        for i in range(num_layers):
+        for i, direction in enumerate(directions):
             layers.append(
                 TemporalEncoderBlock(
                     num_heads=num_heads, 
@@ -171,8 +169,8 @@ class TemporalEncoder(nn.Module):
                     norm_layer=norm_layer,
                     dropout=dropout,
                     need_weights=need_weights,
-                    reduce=True if i == (num_layers - 1) else False,
-                    direction=directions[i],
+                    reduce=True if i == (len(directions) - 1) else False,
+                    direction=direction,
                     use_global=use_global
                 )
             )

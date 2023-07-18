@@ -27,23 +27,21 @@
                     },
                     "temporal": {
                         "encoder": {
-                            "num_layers": 1,
                             "num_heads": 8,
                             "hidden_dim": 256,
                             "mlp_dim": 512,
                             "dropout": 0.0,
-                            "directions": ["backward-forward"]
+                            "directions": ["backward", "forward"]
                         }
                     }
                 },
                 "temporal": {
                     "encoder": {
-                        "num_layers": 1,
                         "num_heads": 8,
                         "hidden_dim": 256,
                         "mlp_dim": 512,
                         "dropout": 0.0,
-                        "directions": ["backward-forward"]
+                        "directions": ["backward", "forward"]
                     }
                 }
             },
@@ -57,19 +55,18 @@
                         "hidden_dim": 768,
                         "mlp_dim": 3072,
                         "total_layers": 12,
-                        "vit_weights": "saved/models/vit.pth",
+                        "vit_weights": "saved/models/vit/vit.pth",
                         "root_path": "../..",
                         "device": "cpu"
                     }
                 },
                 "temporal": {
                     "encoder": {
-                        "num_layers": 1,
                         "num_heads": 8,
                         "hidden_dim": 256,
                         "mlp_dim": 512,
                         "dropout": 0.0,
-                        "directions": ["backward-forward"]
+                        "directions": ["backward", "forward"]
                     }
                 }
             },

@@ -1,5 +1,5 @@
 {
-    "name": "HPPW-Norm",
+    "name": "colab-HPPW",
     "n_gpu": 1,
 
     "arch": {
@@ -57,7 +57,7 @@
                         "hidden_dim": 768,
                         "mlp_dim": 3072,
                         "total_layers": 12,
-                        "vit_weights": "saved/models/vit.pth",
+                        "vit_weights": "saved/models/vit/vit.pth",
                         "root_path": "/content/drive/MyDrive/human-pose-prediction-in-the-wild"
                     }
                 },
@@ -136,6 +136,12 @@
     },
     "loss": "mpjpe",
     "metrics": [
+        {
+            "type": "VIM",
+            "args": {
+                "img_size": 224
+            }
+        }
     ],
     "lr_scheduler": {
         "type": "StepLR",
