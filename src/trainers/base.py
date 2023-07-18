@@ -10,7 +10,6 @@ from logger import TensorboardWriter
 import wandb
 
 
-wandb.login()
 
 class BaseTrainer:
     """
@@ -67,10 +66,6 @@ class BaseTrainer:
         if config['tensorboard']:
             self.writer = TensorboardWriter(config.log_dir, self.logger)
 
-        # setup visualization writer instance
-        self.writer = None
-        if config['tensorboard']:
-            self.writer = TensorboardWriter(config.log_dir, self.logger)
 
         self.start_epoch = 1
         self.best_epoch = 1
@@ -82,9 +77,9 @@ class BaseTrainer:
         # This part doesn't do anything if you don't have a GPU.
         self._device, self._device_ids = prepare_device(config['n_gpu'])
         self.wandb_enabled = config['wandb']
-        self.wandb_enabled = config['wandb']
-
-        wandb.init(project="human-pose-prediction-in-the-wild")
+        if self.wandb_enabled:
+            wandb.login()
+            wandb.init(project="human-pose-prediction-in-the-wild")
 
     
 
