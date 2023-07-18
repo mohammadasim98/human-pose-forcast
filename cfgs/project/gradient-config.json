@@ -27,7 +27,6 @@
                     },
                     "temporal": {
                         "encoder": {
-                            "num_layers": 2,
                             "num_heads": 8,
                             "hidden_dim": 256,
                             "mlp_dim": 512,
@@ -38,7 +37,6 @@
                 },
                 "temporal": {
                     "encoder": {
-                        "num_layers": 2,
                         "num_heads": 8,
                         "hidden_dim": 256,
                         "mlp_dim": 512,
@@ -64,7 +62,6 @@
                 },
                 "temporal": {
                     "encoder": {
-                        "num_layers": 2,
                         "num_heads": 8,
                         "hidden_dim": 256,
                         "mlp_dim": 512,

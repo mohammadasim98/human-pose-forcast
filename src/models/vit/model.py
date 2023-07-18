@@ -55,7 +55,7 @@ class VisionTransformer(nn.Module):
         seq_length = (image_size // patch_size) ** 2
 
         # Add a class token
-        self.class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim)).to(device)
+        self.class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
         seq_length += 1
 
         ## The entire encoder
@@ -68,15 +68,13 @@ class VisionTransformer(nn.Module):
             self.norm_layer,
             need_weights,
         )
-        self.seq_length = seq_length
-        self.global_pool = global_pool
+        
         # Need to define it to be able to load the state dictionary.
         # This head wont be used.
         heads_layers: OrderedDict[str, nn.Module] = OrderedDict()
         heads_layers["head"] = nn.Linear(hidden_dim, self.num_classes)
         self.heads = nn.Sequential(heads_layers)
 
-        self.max_pool = nn.MaxPool2d(kernel_size=[patch_size, patch_size], stride=patch_size)
         # ##############################################################################
         # # TODO: Need to add two new heads for local and global feature extraction
         # # ... 
@@ -85,8 +83,15 @@ class VisionTransformer(nn.Module):
         # Load Vit weights
         vit_weights = torch.load(ospj(root_path, vit_weights))
         self.load_state_dict(vit_weights, strict=True)
+        
         del self.encoder.layers[num_layers:]
+        
         self.linear = nn.Linear(768, 256)
+        self.max_pool = nn.MaxPool2d(kernel_size=[patch_size, patch_size], stride=patch_size)
+        self.seq_length = seq_length
+        self.global_pool = global_pool
+        
+        self.device = device
         # raise NotImplementedError
 
     def _process_padding_mask(self, padding_mask):
@@ -153,7 +158,7 @@ class VisionTransformer(nn.Module):
         # Convert 2D padding mask to 1D vector of bool (True where there is padding else False)
         # Also add additonal padding mask for cls token
         key_padding_mask = self._process_padding_mask(key_padding_mask)
-        cls_mask = torch.zeros(size=(key_padding_mask.shape[0], 1))
+        cls_mask = torch.zeros(size=(key_padding_mask.shape[0], 1)).to(self.device)
         cls_mask = cls_mask > 0
         key_padding_mask = torch.cat([cls_mask, key_padding_mask], dim=-1)
         results = self.encoder(x, key_padding_mask)
