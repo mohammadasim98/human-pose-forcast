@@ -49,10 +49,10 @@ class HumanPosePredictorModel(nn.Module):
             )
         
         self.pose_emb_dim = pose["spatial"]["encoder"]["hidden_dim"]
-        self.embed_root = FourierMLPEncoding(num_freq=64, d_model=self.pose_emb_dim, n_input_dim=3)
-        self.embed_relative_pose = FourierMLPEncoding(num_freq=128, d_model=self.pose_emb_dim, n_input_dim=3)
+        self.embed_root = FourierMLPEncoding(num_freq=64, d_model=self.pose_emb_dim, n_input_dim=2)
+        self.embed_relative_pose = FourierMLPEncoding(num_freq=128, d_model=self.pose_emb_dim, n_input_dim=2)
         
-        self.linear = nn.Linear(self.pose_emb_dim, 3)
+        self.linear = nn.Linear(self.pose_emb_dim, 2)
 
         self.unroll = unroll
         
@@ -63,9 +63,9 @@ class HumanPosePredictorModel(nn.Module):
 
         Args:
             relative_poses (torch.Tensor) : An input of poses of shape 
-                (batch_size, history_window {+ future_window}, num_joints, 3)
+                (batch_size, history_window {+ future_window}, num_joints, 2)
             root_joints (torch.Tensor): An input of rootjoints of shape 
-                (batch_size, history_window {+ future_window}, 3)
+                (batch_size, history_window {+ future_window}, 2)
             
         Returns:
             memory (torch.Tensor): A (batch_size, num_joints + history_window, E) Spatiotemporally encoded memory 
@@ -194,8 +194,8 @@ class HumanPosePredictorModel(nn.Module):
             future (list(torch.tensor, torch.tensor)): 
                 A list of [norm_poses, root_joints] each with their respective shape as
                 [
-                    (batch_size, future_window, num_joints, 3), 
-                    (batch_size, future_window, 3), 
+                    (batch_size, future_window, num_joints, 2), 
+                    (batch_size, future_window, 2), 
                 ]
             is_teacher_forcing (bool): A boolean if True set to use teacher forcing method 
                 for autoregressive. If False non-autoregressive decoding (may not be good to use all the time during training). 
