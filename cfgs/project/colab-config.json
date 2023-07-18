@@ -147,7 +147,8 @@
         "type": "StepLR",
         "args": {
             "step_size": 5,
-            "gamma": 0.8
+            "gamma": 0.8,
+            "verbose": true
         }
     },
     "trainer": {

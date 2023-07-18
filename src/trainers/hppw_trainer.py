@@ -109,7 +109,7 @@ class HPPWTrainer(BaseTrainer):
         log_dict = self.epoch_metrics.result()
         pbar.close()
         self.lr_scheduler.step()
-
+        self.lr_scheduler.print_lr()
         self.logger.debug(f"==> Finished Epoch {self.current_epoch}/{self.epochs}.")
         
         return log_dict

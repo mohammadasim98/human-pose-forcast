@@ -82,7 +82,7 @@
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/train.tfrecord", 
-            "n_scenes": 15, 
+            "n_scenes": 4, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
@@ -98,7 +98,7 @@
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/validation.tfrecord", 
-            "n_scenes": 12, 
+            "n_scenes": 4, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
@@ -129,10 +129,10 @@
     "optimizer": {
         "type": "SGD",
         "args":{
-            "lr": 0.001
+            "lr": 0.01
         }
     },
-    "loss": "mpjpe",
+    "loss": "modified_mpjpe",
     "metrics": [
         {
             "type": "VIM",
@@ -145,7 +145,8 @@
         "type": "StepLR",
         "args": {
             "step_size": 5,
-            "gamma": 0.8
+            "gamma": 0.8,
+            "verbose": true
         }
     },
     "trainer": {

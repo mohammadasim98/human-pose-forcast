@@ -3,7 +3,7 @@
 import torch
 
 
-def cvt_absolute_pose(root_joint, norm_pose):
+def cvt_absolute_pose(root_joint: torch.Tensor, norm_pose: torch.Tensor):
     """Convert root relative pose to absolute pose given a root joint.
                                 (1 + norm_pose)
               abs_pose = root X ---------------
