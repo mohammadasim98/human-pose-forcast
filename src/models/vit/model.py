@@ -81,7 +81,8 @@ class VisionTransformer(nn.Module):
         # # TODO: Need to add two new heads for local and global feature extraction
         # # ... 
         # # ...
-            
+        for param in self.parameters():
+            print(param.name)
         # Load Vit weights
         vit_weights = torch.load(ospj(root_path, vit_weights))
         self.load_state_dict(vit_weights, strict=True)
