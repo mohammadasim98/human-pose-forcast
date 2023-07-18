@@ -107,8 +107,12 @@ class LocalForwardTemporalAttention(nn.Module):
             result = query + x4
               
         else:
-            result = torch.cat(attended_values, axis=1)
-            result = self.ln_2(result)
+            if len(attended_values):    
+                result = torch.cat(attended_values, axis=1)
+                result = self.ln_2(result)
+
+            else: 
+                result = query.unsqueeze(1)
             
           
         return result
@@ -203,7 +207,6 @@ class LocalBackwardTemporalAttention(nn.Module):
             
             # Update query
             query = key_value + attended_value
-            
             # Append attended queries
             attended_values.append(query.unsqueeze(1))
         
@@ -213,8 +216,13 @@ class LocalBackwardTemporalAttention(nn.Module):
             result = query + x4
               
         else:
-            result = torch.cat(attended_values, axis=1)
-            result = self.ln_2(result)
+            if len(attended_values):    
+                result = torch.cat(attended_values, axis=1)
+                result = self.ln_2(result)
+
+            else: 
+                result = query.unsqueeze(1)
+                
             
           
         return result

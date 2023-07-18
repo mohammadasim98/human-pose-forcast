@@ -39,9 +39,10 @@ def serialize_example(seq, images):
       'frames': _int64_feature(seq["abs_poses"].shape[1]),
       'image_raw': _bytes_feature(images.tobytes()), # np.uint8
       'pmask': _bytes_feature(seq["pmask"][:, :, 0].astype(np.uint8).tobytes()), # np.uint8
-      'norm_poses': _bytes_feature(seq["norm_poses"].astype(np.float32).tobytes()), # np.float32
-      'root_joints': _bytes_feature(seq["root_joints"].astype(np.int32).tobytes()), # np.int32 otherwise precision errors
-      'abs_poses': _bytes_feature(seq["abs_poses"].astype(np.int32).tobytes()), # np.int32 otherwise precision errors
+      '2d_norm_poses': _bytes_feature(seq["norm_poses"].astype(np.float32).tobytes()), # np.float32
+      '2d_root_joints': _bytes_feature(seq["root_joints"].astype(np.int32).tobytes()), # np.int32 otherwise precision errors
+      '2d_poses': _bytes_feature(seq["abs_poses"].astype(np.int32).tobytes()), # np.int32 otherwise precision errors
+      '3d_poses': _bytes_feature(seq["jointPositions"].astype(np.float32).tobytes()), 
   }
 
   # Create a Features message using tf.train.Example.

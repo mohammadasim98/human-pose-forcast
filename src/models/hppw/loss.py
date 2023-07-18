@@ -3,12 +3,11 @@ import torch
 
 def mpjpe(pred, future):
 
-    root_relative_poses = future[2]
-    root_joints = future[1]
+    sum_per_joint = torch.sum((future - pred) ** 2, dim=-1)
+    norm_per_joint = torch.sqrt(sum_per_joint)
+    mean = torch.mean(norm_per_joint)
 
-    future_poses = torch.cat([root_joints.unsqueeze(1), root_relative_poses], dim=1)
-
-    pass
+    return mean
 
 
     

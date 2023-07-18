@@ -79,6 +79,8 @@ class TemporalEncoderBlock(nn.Module):
         
         self.use_global = use_global
         
+        print("using modified temporal backward-forward for reminder")
+        
     def forward(self, local_feat: torch.Tensor, global_feat: Union[torch.Tensor, None]=None):
         """Perform forward pass
 

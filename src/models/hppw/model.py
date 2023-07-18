@@ -83,7 +83,6 @@ class HumanPosePredictorModel(nn.Module):
             
             relative_poses = self.embed_relative_pose(relative_poses)
             root_joints = self.embed_root(root_joints)
-
             # Out Shape: (batch_size*sequence_length, num_joints, E) and (batch_size*sequence_length, E)
             memory_local, memory_global = self.pose_encoder(root_joints=root_joints, relative_poses=relative_poses)
             
@@ -211,9 +210,9 @@ class HumanPosePredictorModel(nn.Module):
         torch._assert(mask.dim() == 3, f"Expected (batch_size, H, W) got {mask.shape}")
 
 
-        mask = mask.float()
-        img_seq = img_seq.float()
-        
+        # mask = mask.float()
+        # img_seq = img_seq.float()
+
         _, history_window, _, _, _ = img_seq.shape
         _, history_window, num_joints, pose_dim = relative_pose_seq.shape 
 

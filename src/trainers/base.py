@@ -6,19 +6,11 @@ from numpy import inf
 from utils.io import prepare_device
 from logger import TensorboardWriter
 
-try:
-    import wandb
-except:
-    pass
-from logger import TensorboardWriter
-import torch
 
-try:
-    import wandb
-except:
-    pass
+import wandb
 
 
+wandb.login()
 
 class BaseTrainer:
     """
@@ -92,6 +84,9 @@ class BaseTrainer:
         self.wandb_enabled = config['wandb']
         self.wandb_enabled = config['wandb']
 
+        wandb.init(project="human-pose-prediction-in-the-wild")
+
+    
 
     @abstractmethod
     def _train_epoch(self):
