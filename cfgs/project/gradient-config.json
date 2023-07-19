@@ -82,7 +82,7 @@
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/train.tfrecord", 
-            "n_scenes": 4, 
+            "n_scenes": 15, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
@@ -91,14 +91,14 @@
             "resize": [224, 224, 3],
             "shuffle": true, 
             "n_workers": 8, 
-            "prefetch_factor": 2
+            "prefetch_factor": 32
         }
     },
     "validation_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/validation.tfrecord", 
-            "n_scenes": 4, 
+            "n_scenes": 15, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
@@ -107,14 +107,14 @@
             "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 8, 
-            "prefetch_factor": 2
+            "prefetch_factor": 32
         }
     },
     "test_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/test.tfrecord", 
-            "n_scenes": 5, 
+            "n_scenes": 15, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
@@ -123,7 +123,7 @@
             "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 8, 
-            "prefetch_factor": 2
+            "prefetch_factor": 32
         }
     },
     "optimizer": {

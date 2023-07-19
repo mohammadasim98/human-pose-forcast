@@ -63,7 +63,7 @@ class HPPWTrainer(BaseTrainer):
         self.model.train()
         self.epoch_metrics.reset()
 
-        self.logger.debug(f"==> Start Training Epoch {self.current_epoch}/{self.epochs}, lr={self.optimizer.param_groups[0]['lr']:.6f} ")
+        self.logger.debug(f"==> Start Training Epoch {self.current_epoch}/{self.epochs}, lr={self.lr_scheduler.param_groups[0]['lr']:.6f} ")
 
         pbar = tqdm(total=len(self._train_loader) * self._train_loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
         
@@ -109,7 +109,6 @@ class HPPWTrainer(BaseTrainer):
         log_dict = self.epoch_metrics.result()
         pbar.close()
         self.lr_scheduler.step()
-        self.lr_scheduler.print_lr()
         self.logger.debug(f"==> Finished Epoch {self.current_epoch}/{self.epochs}.")
         
         return log_dict
