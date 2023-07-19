@@ -9,6 +9,7 @@ from models.temporal.encoder import TemporalEncoder
 from models.vit.model import VisionTransformer
 from models.pose.decoder import PoseDecoder
 from models.embedding.fourier import FourierEncoding, FourierMLPEncoding
+from models.projection.model import LinearProjection
 
 
 
@@ -231,3 +232,81 @@ class HumanPosePredictorModel(nn.Module):
         out_poses, decoder_attentions = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, tgt=tgt_poses)
 
         return self.linear(out_poses[:, 1:, ...]), [image_attentions, pose_attentions, decoder_attentions]
+    
+    
+    
+class HumanPosePredictorModel3D(HumanPosePredictorModel):
+    
+    def __init__(
+        self,
+        pose: dict,
+        image: dict,
+        activation: dict,
+        projection: dict,
+        future_window: int,
+        unroll: bool=True
+    ) -> None:
+        super().__init__(pose, image, activation, future_window, unroll)
+        
+        self.projection = LinearProjection(**projection)
+        
+    def forward(self, img_seq: torch.Tensor, relative_pose_seq: torch.Tensor, root_joint_seq: torch.Tensor, mask: Union[torch.Tensor, None], proj_future: bool=True):
+        """Perform forward pass
+
+        Args:
+            history (list(torch.tensor, torch.tensor, torch.tensor, torch.tensor)): 
+                A list of [imgs, norm_poses, root_joints, mask] each with their respective shape as
+                [
+                    (batch_size, history_window, H, W, C), 
+                    (batch_size, history_window, num_joints, 2), 
+                    (batch_size, history_window, 2), 
+                    (batch_size, H, W)
+                ]
+            future (list(torch.tensor, torch.tensor)): 
+                A list of [norm_poses, root_joints] each with their respective shape as
+                [
+                    (batch_size, future_window, num_joints, 2), 
+                    (batch_size, future_window, 2), 
+                ]
+            is_teacher_forcing (bool): A boolean if True set to use teacher forcing method 
+                for autoregressive. If False non-autoregressive decoding (may not be good to use all the time during training). 
+                    Defaults to False.
+  
+        Raises:
+            NotImplementedError: Need to implement forward pass
+        """
+        torch._assert(img_seq.dim() == 5, f"Expected (batch_size, history_window, H, W, C) got {img_seq.shape}")
+        torch._assert(relative_pose_seq.dim() == 4, f"Expected (batch_size, history_window, num_joints, 2) got {relative_pose_seq.shape}")
+        torch._assert(root_joint_seq.dim() == 3, f"Expected (batch_size, history_window, 2) got {root_joint_seq.shape}")
+        torch._assert(mask.dim() == 3, f"Expected (batch_size, H, W) got {mask.shape}")
+
+
+        # mask = mask.float()
+        # img_seq = img_seq.float()
+
+        _, history_window, _, _, _ = img_seq.shape
+        _, history_window, num_joints, pose_dim = relative_pose_seq.shape 
+
+
+        # Get combined* local and global features from sequences of images with padding mask    
+        memory_img, image_attentions = self.image_encoding(img_seq=img_seq, mask=mask, unroll=self.unroll)
+        
+        # Get combined* local and global features from sequences of poses
+        memory_poses, tgt_poses, pose_attentions = self.pose_encoding(relative_poses=relative_pose_seq, root_joints=root_joint_seq, history_window=history_window, unroll=self.unroll)
+        
+        # Autoregressive decoder with "dual" conditioning
+        # Currently uses only combined local and global features. Need to modify it later for further evaluation.
+        # Out Shape: (B, future_window + 1, J, 2)
+        
+        
+        out_poses, decoder_attentions = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, tgt=tgt_poses)
+
+        out_2d = self.linear(out_poses[:, 1:, ...])
+        history_poses = torch.cat([root_joint_seq.unsqueeze(2), relative_pose_seq], dim=2)
+        if proj_future:
+            proj = torch.cat([history_poses, out_2d], dim=1)
+        else:
+            proj = history_poses
+
+        out_3d = self.projection(proj)
+        return out_2d, out_3d, [image_attentions, pose_attentions, decoder_attentions]

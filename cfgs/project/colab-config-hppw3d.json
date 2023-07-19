@@ -1,9 +1,9 @@
 {
-    "name": "local-HPPW",
+    "name": "colab-HPPW3D",
     "n_gpu": 1,
 
     "arch": {
-        "type": "HumanPosePredictorModel",
+        "type": "HumanPosePredictorModel3D",
         "args": {
             "pose": {
                 "spatial": {
@@ -22,29 +22,28 @@
                             "num_heads": 8,
                             "hidden_dim": 256,
                             "out_dim": 512,
-                            "dropout": 0.0,
-                            "need_weights": true
+                            "dropout": 0.0
                         }
                     },
                     "temporal": {
                         "encoder": {
+                            "num_layers": 2,
                             "num_heads": 8,
                             "hidden_dim": 256,
                             "mlp_dim": 512,
                             "dropout": 0.0,
-                            "directions": ["backward", "forward"],
-                            "need_weights": true
+                            "directions": ["backward", "forward"]
                         }
                     }
                 },
                 "temporal": {
                     "encoder": {
+                        "num_layers": 2,
                         "num_heads": 8,
                         "hidden_dim": 256,
                         "mlp_dim": 512,
                         "dropout": 0.0,
-                        "directions": ["backward", "forward"],
-                        "need_weights": true
+                        "directions": ["backward", "forward"]
                     }
                 }
             },
@@ -59,23 +58,27 @@
                         "mlp_dim": 3072,
                         "total_layers": 12,
                         "vit_weights": "saved/models/vit/vit.pth",
-                        "root_path": "../..",
-                        "device": "cpu"
+                        "root_path": "/content/drive/MyDrive/human-pose-prediction-in-the-wild"
                     }
                 },
                 "temporal": {
                     "encoder": {
+                        "num_layers": 2,
                         "num_heads": 8,
                         "hidden_dim": 256,
                         "mlp_dim": 512,
                         "dropout": 0.0,
-                        "directions": ["backward", "forward"],
-                        "need_weights": true
-
+                        "directions": ["backward", "forward"]
                     }
                 }
             },
-            
+            "projection": {
+                "mlps": [128, 512, 128], 
+                "activation": "gelu",
+                "inp_dim": 2,
+                "out_dim": 3,
+                "num_layers": 2
+            },
             "activation": {
                 "type": "ReLU",
                 "args": {}
@@ -87,49 +90,49 @@
     "train_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
-            "data_path": "../../data/3DPWPreprocessedTFRecord/train.tfrecord", 
-            "n_scenes": 5, 
+            "data_path": "/content/drive/MyDrive/human-pose-prediction-in-the-wild/data/3DPWPreprocessedTFRecord/train.tfrecord", 
+            "n_scenes": 15, 
             "person_id": 0, 
             "subsample": 1, 
-            "history_window": 10, 
-            "future_window": 10, 
-            "batch_size": 1, 
+            "history_window": 15, 
+            "future_window": 15, 
+            "batch_size": 16, 
             "resize": [224, 224, 3],
-            "shuffle": false, 
-            "n_workers": 0, 
-            "prefetch_factor": null
+            "shuffle": true, 
+            "n_workers": 1, 
+            "prefetch_factor": 2
         }
     },
     "validation_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
-            "data_path": "../../data/3DPWPreprocessedTFRecord/validation.tfrecord", 
-            "n_scenes": 5, 
+            "data_path": "/content/drive/MyDrive/human-pose-prediction-in-the-wild/data/3DPWPreprocessedTFRecord/validation.tfrecord", 
+            "n_scenes": 12, 
             "person_id": 0, 
             "subsample": 1, 
-            "history_window": 10, 
-            "future_window": 10, 
-            "batch_size": 1, 
+            "history_window": 15, 
+            "future_window": 15, 
+            "batch_size": 16, 
             "resize": [224, 224, 3],
             "shuffle": false, 
-            "n_workers": 0, 
-            "prefetch_factor": null
+            "n_workers": 1, 
+            "prefetch_factor": 2
         }
     },
     "test_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
-            "data_path": "../../data/3DPWPreprocessedTFRecord/test.tfrecord", 
+            "data_path": "/content/drive/MyDrive/human-pose-prediction-in-the-wild/data/3DPWPreprocessedTFRecord/test.tfrecord", 
             "n_scenes": 5, 
             "person_id": 0, 
             "subsample": 1, 
-            "history_window": 10, 
-            "future_window": 10, 
+            "history_window": 15, 
+            "future_window": 15, 
             "batch_size": 1, 
             "resize": [224, 224, 3],
             "shuffle": false, 
-            "n_workers": 0, 
-            "prefetch_factor": null
+            "n_workers": 1, 
+            "prefetch_factor": 2
         }
     },
     "optimizer": {
@@ -140,6 +143,12 @@
     },
     "loss": "mpjpe",
     "metrics": [
+        {
+            "type": "VIM",
+            "args": {
+                "img_size": 224
+            }
+        }
     ],
     "lr_scheduler": {
         "type": "StepLR",
@@ -147,22 +156,21 @@
             "step_size": 5,
             "gamma": 0.8,
             "verbose": true
-
         }
     },
     "trainer": {
-        "type": "HPPWTrainer",
+        "type": "HPPW3DTrainer",
         "args": {},
 
         "epochs": 20,
-        "save_dir": "../../saved/",
+        "save_dir": "/content/drive/MyDrive/human-pose-prediction-in-the-wild/saved/",
         "save_period": 2,
         "eval_period": 1,
         "verbosity": 2,
         "monitor": "min eval_loss",
         "early_stop": 4       
     },
-    "tensorboard": false,
-    "wandb": false
+    "tensorboard": true,
+    "wandb": true
 
 }

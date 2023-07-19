@@ -1,9 +1,9 @@
 {
-    "name": "local-HPPW",
+    "name": "local-HPPW3D",
     "n_gpu": 1,
 
     "arch": {
-        "type": "HumanPosePredictorModel",
+        "type": "HumanPosePredictorModel3D",
         "args": {
             "pose": {
                 "spatial": {
@@ -75,13 +75,19 @@
                     }
                 }
             },
-            
+            "projection": {
+                "mlps": [128, 512, 128], 
+                "activation": "gelu",
+                "inp_dim": 2,
+                "out_dim": 3,
+                "num_layers": 2
+            },
             "activation": {
                 "type": "ReLU",
                 "args": {}
             },
             "unroll": true,
-            "future_window": 15
+            "future_window": 10
         }
     },
     "train_loader": {
@@ -151,7 +157,7 @@
         }
     },
     "trainer": {
-        "type": "HPPWTrainer",
+        "type": "HPPW3DTrainer",
         "args": {},
 
         "epochs": 20,

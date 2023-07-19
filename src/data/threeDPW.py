@@ -179,7 +179,7 @@ class ThreeDPWTFRecordDataset():
 
             start = end
             end = self.future_window + start
-            future.append([image_strings[start:end], norm_pose_2d[person_id, start:end, :, :], root_joints_2d[person_id, start:end, :], mask])
+            future.append([image_strings[start:end], norm_pose_2d[person_id, start:end, :, :], root_joints_2d[person_id, start:end, :], mask, poses_3d[person_id, start:end, :, :], trans_3d[person_id, start:end, :]])
 
         return history, future
     
@@ -282,7 +282,7 @@ class ThreeDPWTFRecordDataset():
         history = [imgs, norm_poses_2d, root_joints_2d, mask, poses_3d, trans_3d]  
         
         img_list = []
-        _, norm_poses_2d, root_joints_2d, mask = self.future_data_list[index]
+        _, norm_poses_2d, root_joints_2d, mask, poses_3d, trans_3d = self.future_data_list[index]
         
         # Not need during training or inferencing (Only for verifying the sequence consitency)
         # for string in img_strings:
@@ -291,7 +291,7 @@ class ThreeDPWTFRecordDataset():
         # imgs = np.array(img_list)
         # future = [imgs, norm_poses_2d, root_joints_2d, mask]  
         
-        future = [norm_poses_2d, root_joints_2d]  
+        future = [norm_poses_2d, root_joints_2d, poses_3d, trans_3d]  
         
         return history, future
     
