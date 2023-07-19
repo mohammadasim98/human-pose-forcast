@@ -71,10 +71,13 @@ class PoseDecoder(nn.Module):
             future_window: int,
             img_dim: int,
             pose_dim: int,
+            num_layers: int = 4,
             dropout: float = 0.0,
             batch_first: bool = True,
-            num_layers: int = 4,
             norm_layer=partial(nn.LayerNorm, eps=1e-6),
+            use_global: bool=False,
+            need_weights: bool=False,
+            average_attn_weights: bool=True
     ) -> None:
         super().__init__()
         self.process_layer = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=batch_first)
@@ -85,10 +88,11 @@ class PoseDecoder(nn.Module):
         self.mlp = MLPBlock(hidden_dim, mlp_dim=out_dim)
         # Replace it with custom decoder to allow us to also configure whether to teacher-force during training
         self.decoder = nn.TransformerDecoder(self.decode_layer, num_layers)
-        self.temporal_encoder = TemporalEncoder(**temporal["encoder"], use_global=False)
+        self.temporal_encoder = TemporalEncoder(**temporal["encoder"], use_global=use_global)
 
         self.future_window = future_window
-        
+        self.need_weights=need_weights,
+        self.average_attn_weights=average_attn_weights
         #######################################################
         # TODO: Need to implement a pose decoder block
         # self.block = PoseDecoderBlock(...)
@@ -110,9 +114,15 @@ class PoseDecoder(nn.Module):
 
         Returns:
             total_encoding: encoding of image features and pose, transformer based"""
-
-        total_encoding, _ = self.process_layer(img_encoding, pos_encoding, pos_encoding)
-        return total_encoding
+        attention_weights = None
+        total_encoding, attention_weights = self.process_layer(
+            img_encoding, 
+            pos_encoding, 
+            pos_encoding, 
+            need_weights=self.need_weights,
+            average_attn_weights=self.average_attn_weights
+        )
+        return total_encoding, attention_weights
 
     def forward(
         self, 
@@ -137,33 +147,23 @@ class PoseDecoder(nn.Module):
         torch._assert(tgt.dim() == 4, f"Expected (B, future_window + 1, num_joints + 1, hidden_dim) got {pos_encoding.shape}")
         future_window_plus = self.future_window + 1
         
-        memory = self.process_input(img_encoding, pos_encoding)
+        memory, cross_attention_weights = self.process_input(img_encoding, pos_encoding)
 
-        
-        if is_teacher_forcing:
-            # No Auto Regression, Pass the tgt as it is, with attention masks to prevent lookahead
-            # Generate a (future_window x future_window) matrix mask with -inf at the upper triangular
-            # and 0 at the lower. 
-            tgt_atten_mask = self._generate_square_subsequent_mask(future_window_plus)
-            tgt_poses = self.temporal_encoder(tgt_poses) 
-            result = self.decoder(tgt, memory, tgt_atten_mask=tgt_atten_mask)
+        # Auto Regression, no need for masking
+        # Out Shape: (batch_size, 1, num_poses + 1, E)
+        # Get the current pose as the initial input to decoder
+        tgt_poses = tgt[:, 0, ...].unsqueeze(1) 
+        for _ in range(future_window_plus - 1): # Loop till future window excluding the pose encoding at t=n
+            tgt_poses_temp, _, temp_attention_weights = self.temporal_encoder(
+                local_feat=tgt_poses, 
+            )      
 
-        else:
-            # Auto Regression, no need for masking
-            # Out Shape: (batch_size, 1, num_poses + 1, E)
-            # Get the current pose as the initial input to decoder
-            tgt_poses = tgt[:, 0, ...].unsqueeze(1) 
-            for _ in range(future_window_plus - 1): # Loop till future window excluding the pose encoding at t=n
-                tgt_poses_temp = self.temporal_encoder(
-                    local_feat=tgt_poses, 
-                )      
-
-                result = self.decoder(tgt=tgt_poses_temp, memory=memory) 
-                
-                # Concatenate the latest prediction
-                tgt_poses = torch.cat([tgt_poses, result.unsqueeze(1)], dim=1)
+            result = self.decoder(tgt=tgt_poses_temp, memory=memory) 
+            
+            # Concatenate the latest prediction
+            tgt_poses = torch.cat([tgt_poses, result.unsqueeze(1)], dim=1)
                 
         # Linear Projection to out_dim        
         result = self.ln(tgt_poses)
         result= self.mlp(result)
-        return result
+        return result, [cross_attention_weights, temp_attention_weights]

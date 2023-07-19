@@ -23,3 +23,20 @@ class PoseMultiInputSequential(nn.Sequential):
             inputs = module(pose, key_padding_mask)
 
         return inputs, key_padding_mask
+    
+class TemporalMultiInputSequential(nn.Sequential):
+    """ A custom nn.Sequential model for multiple inputs and outputs
+    """
+    def forward(self, *inputs):
+        attentions = []
+        for module in self._modules.values():
+            if type(inputs) == tuple:
+                inputs = module(*inputs[:2])
+                attentions.append(inputs[-1])
+                inputs = inputs[:2]
+            else:
+                inputs = module(inputs)
+                attentions.append(inputs[-1])
+
+            
+        return *inputs, attentions

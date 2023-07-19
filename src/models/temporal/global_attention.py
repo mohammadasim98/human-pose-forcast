@@ -17,7 +17,8 @@ class GlobalTemporalAttention(nn.Module):
         mlp_dim: int,
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         dropout: float=0.0,
-        need_weights = False,
+        need_weights: bool=False,
+        average_attn_weights: bool=True
     ) -> None:
         """Initialize Global Bi-directional Temporal Encoder
 
@@ -41,7 +42,8 @@ class GlobalTemporalAttention(nn.Module):
         self.mlp = MLPBlock(hidden_dim, mlp_dim)
 
         self.need_weights = need_weights # Whether to return attention weights as well
-
+        self.average_attn_weights = average_attn_weights
+        
     def forward(self, inputs: torch.Tensor):
         """Perform forward pass
 
@@ -58,11 +60,17 @@ class GlobalTemporalAttention(nn.Module):
         attention_weights = None # Needed only if self.need_weights is True for this specific Block
 
         x0 = self.ln_1(inputs)
-        x1, attention_weights = self.self_attention(x0, x0, x0, need_weights=self.need_weights)
+        x1, attention_weights = self.self_attention(
+            x0, 
+            x0, 
+            x0, 
+            need_weights=self.need_weights, 
+            average_attn_weights=self.average_attn_weights
+        )
         x2 = inputs + x1
         x3 = self.ln_2(x2)
         x4 = self.mlp(x3)
         result = x2 + x4
 
         
-        return result
+        return result, attention_weights

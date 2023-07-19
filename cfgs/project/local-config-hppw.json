@@ -22,7 +22,8 @@
                             "num_heads": 8,
                             "hidden_dim": 256,
                             "out_dim": 512,
-                            "dropout": 0.0
+                            "dropout": 0.0,
+                            "need_weights": true
                         }
                     },
                     "temporal": {
@@ -31,7 +32,8 @@
                             "hidden_dim": 256,
                             "mlp_dim": 512,
                             "dropout": 0.0,
-                            "directions": ["backward", "forward"]
+                            "directions": ["backward", "forward"],
+                            "need_weights": true
                         }
                     }
                 },
@@ -41,7 +43,8 @@
                         "hidden_dim": 256,
                         "mlp_dim": 512,
                         "dropout": 0.0,
-                        "directions": ["backward", "forward"]
+                        "directions": ["backward", "forward"],
+                        "need_weights": true
                     }
                 }
             },
@@ -66,10 +69,13 @@
                         "hidden_dim": 256,
                         "mlp_dim": 512,
                         "dropout": 0.0,
-                        "directions": ["backward", "forward"]
+                        "directions": ["backward", "forward"],
+                        "need_weights": true
+
                     }
                 }
             },
+            
             "activation": {
                 "type": "ReLU",
                 "args": {}

@@ -104,7 +104,7 @@ class HumanPosePredictorModel(nn.Module):
             memory_global = torch.cat(memory_global, dim=1)
             
         # Out Shape: (B, num_joints, E) and (B, history_window, E)
-        memory_temp_local, memory_temp_global = self.pose_temporal_encoder(memory_local[:, :history_window, ...], memory_global[:, :history_window, ...])
+        memory_temp_local, memory_temp_global, attention_weights = self.pose_temporal_encoder(memory_local[:, :history_window, ...], memory_global[:, :history_window, ...])
         
         # concatenate along sequence dimension (B, num_joints + history_window, E)
         memory = torch.cat([memory_temp_local, memory_temp_global], dim=1) 
@@ -117,7 +117,7 @@ class HumanPosePredictorModel(nn.Module):
         # concatenate along num_joint dimension (B, future_window + 1, num_joints + 1, E)
         tgt_pose_feat = torch.cat([memory_global[:, history_window-1:, ...].unsqueeze(1), memory_local[:, history_window-1:, ...]], dim=2)
 
-        return memory, tgt_pose_feat 
+        return memory, tgt_pose_feat, attention_weights
         
     
     def image_encoding(self, img_seq, mask, unroll: bool=False):
@@ -174,10 +174,10 @@ class HumanPosePredictorModel(nn.Module):
             
         # Get local and global temporally encoded features of sequences of images and poses
         # Out Shape: (B, num_patches + 1, E) and (B, history_window, E)
-        memory_local, memory_global = self.im_temporal_encoder(memory_local, memory_global)
+        memory_local, memory_global, attention_weights = self.im_temporal_encoder(memory_local, memory_global)
         
         # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
-        return torch.cat([memory_local, memory_global], dim=1) 
+        return torch.cat([memory_local, memory_global], dim=1), attention_weights
         
     def forward(self, img_seq: torch.Tensor, relative_pose_seq: torch.Tensor, root_joint_seq: torch.Tensor, mask: Union[torch.Tensor, None]):
         """Perform forward pass
@@ -218,16 +218,16 @@ class HumanPosePredictorModel(nn.Module):
 
 
         # Get combined* local and global features from sequences of images with padding mask    
-        memory_img = self.image_encoding(img_seq=img_seq, mask=mask, unroll=self.unroll)
+        memory_img, image_attentions = self.image_encoding(img_seq=img_seq, mask=mask, unroll=self.unroll)
         
         # Get combined* local and global features from sequences of poses
-        memory_poses, tgt_poses = self.pose_encoding(relative_poses=relative_pose_seq, root_joints=root_joint_seq, history_window=history_window, unroll=self.unroll)
+        memory_poses, tgt_poses, pose_attentions = self.pose_encoding(relative_poses=relative_pose_seq, root_joints=root_joint_seq, history_window=history_window, unroll=self.unroll)
         
         # Autoregressive decoder with "dual" conditioning
         # Currently uses only combined local and global features. Need to modify it later for further evaluation.
         # Out Shape: (B, future_window + 1, J, 2)
         
         
-        out_poses = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, tgt=tgt_poses)
+        out_poses, decoder_attentions = self.decoder(img_encoding=memory_img, pos_encoding=memory_poses, tgt=tgt_poses)
 
-        return self.linear(out_poses[:, 1:, ...])
+        return self.linear(out_poses[:, 1:, ...]), [image_attentions, pose_attentions, decoder_attentions]

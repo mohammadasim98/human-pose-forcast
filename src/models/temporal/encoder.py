@@ -4,7 +4,7 @@ import torch.nn as nn
 from typing import Union
 from functools import partial
 
-from models.common.sequential import MultiInputSequential
+from models.common.sequential import TemporalMultiInputSequential
 from models.temporal.global_attention import GlobalTemporalAttention
 from models.temporal.local_attention import LocalBackwardTemporalAttention, LocalForwardTemporalAttention
 
@@ -15,15 +15,16 @@ class TemporalEncoderBlock(nn.Module):
 
     def __init__(
         self,
+        direction: str, # "forward", "backward", or "both" (not configured yet)
         num_heads: int,
         hidden_dim: int,
         mlp_dim: int,
-        norm_layer = partial(nn.LayerNorm, eps=1e-6),
-        dropout: float=0.0,
-        need_weights = False,
         reduce: bool=False,
-        direction: str="forward", # "forward", "backward", or "both" (not configured yet),
-        use_global: bool=True
+        dropout: float=0.0,
+        norm_layer = partial(nn.LayerNorm, eps=1e-6),
+        use_global: bool=True,
+        need_weights: bool=False,
+        average_attn_weights: bool=True
     ):
         """Initialize Temporal Encoder Block
 
@@ -41,20 +42,22 @@ class TemporalEncoderBlock(nn.Module):
             directions (list): A string of direction "forward" or "backward" 
                 for the temporal attention module
         """
+        torch._assert(direction in ["forward", "backward"], "Invalid direction value")
+        
         super().__init__()
         self.num_heads = num_heads
         self.reduce = reduce
         self.direction = direction
         self.need_weights = need_weights 
-        
         self.local_forward_attention = LocalForwardTemporalAttention(
             num_heads=num_heads, 
             hidden_dim=hidden_dim,
             mlp_dim=mlp_dim, 
             norm_layer=norm_layer,
+            reduce=reduce,
             dropout=dropout, 
             need_weights=need_weights,
-            reduce=self.reduce
+            average_attn_weights=average_attn_weights,
         )
         
         self.local_backward_attention = LocalBackwardTemporalAttention(
@@ -62,9 +65,10 @@ class TemporalEncoderBlock(nn.Module):
             hidden_dim=hidden_dim,
             mlp_dim=mlp_dim, 
             norm_layer=norm_layer,
+            reduce=reduce,
             dropout=dropout, 
             need_weights=need_weights,
-            reduce=self.reduce
+            average_attn_weights=average_attn_weights,
         )
         
         if use_global:
@@ -74,7 +78,8 @@ class TemporalEncoderBlock(nn.Module):
                 mlp_dim=mlp_dim, 
                 norm_layer=norm_layer,
                 dropout=dropout, 
-                need_weights=need_weights
+                need_weights=need_weights,
+                average_attn_weights=average_attn_weights
             )
         
         self.use_global = use_global
@@ -102,23 +107,29 @@ class TemporalEncoderBlock(nn.Module):
         # TODO: Need to think about forward-backward or backward-forward methods
         
         if self.direction == "forward":
-            local_result = self.local_forward_attention(local_feat)
+            local_result, local_forward_attentions  = self.local_forward_attention(local_feat)
+            attention_weights = local_forward_attentions
             
         elif self.direction == "backward":
-            local_result = self.local_backward_attention(local_feat)
+            local_result, local_backward_attentions = self.local_backward_attention(local_feat)
+            attention_weights = local_backward_attentions
 
-        elif self.direction == "backward-forward":
-            local_result = self.local_backward_attention(local_feat)
-            local_feat = torch.cat([local_feat[:, 1:, ...], local_result.unsqueeze(1)], dim=1)
-            local_result = self.local_forward_attention(local_feat)
+        # elif self.direction == "backward-forward":
+        #     local_result = self.local_backward_attention(local_feat)
+        #     local_feat = torch.cat([local_feat[:, 1:, ...], local_result.unsqueeze(1)], dim=1)
+        #     local_result = self.local_forward_attention(local_feat)
         
         if self.use_global:
-            torch._assert(global_feat.dim() == 3, f"Expected Global Features of shape \
-            (batch_size, seq_length, hidden_dim) got {global_feat.shape}")
-            global_result = self.global_attention(global_feat)
-            return local_result, global_result
+            torch._assert(
+                global_feat.dim() == 3,    
+                f"Expected Global Features of shape (batch_size, seq_length, hidden_dim) got {global_feat.shape}"
+            )
+            
+            global_result, global_attentions = self.global_attention(global_feat)
+            
+            return local_result, global_result, [global_attentions, attention_weights]
 
-        return local_result
+        return local_result, [attention_weights]
         
 class TemporalEncoder(nn.Module):
     """ Temporal Encoder for local and global features
@@ -132,8 +143,9 @@ class TemporalEncoder(nn.Module):
         directions: list,
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         dropout: float=0.0,
+        use_global: bool=True,
         need_weights: bool=False,
-        use_global: bool=True
+        average_attn_weights: bool=True
         ) -> None:
         """Initialize Temporal Encoder
 
@@ -152,7 +164,6 @@ class TemporalEncoder(nn.Module):
         """
         super().__init__()
         
-        self.hidden_dim = hidden_dim
         #######################################################
         # TODO: Need to implement a temporal encoder
 
@@ -161,19 +172,20 @@ class TemporalEncoder(nn.Module):
         for i, direction in enumerate(directions):
             layers.append(
                 TemporalEncoderBlock(
+                    direction=direction,
                     num_heads=num_heads, 
                     hidden_dim=hidden_dim, 
                     mlp_dim=mlp_dim,
-                    norm_layer=norm_layer,
-                    dropout=dropout,
-                    need_weights=need_weights,
                     reduce=True if i == (len(directions) - 1) else False,
-                    direction=direction,
-                    use_global=use_global
+                    dropout=dropout,
+                    norm_layer=norm_layer,
+                    use_global=use_global,
+                    need_weights=need_weights,
+                    average_attn_weights=average_attn_weights
                 )
             )
         
-        self.layers = MultiInputSequential(*layers)
+        self.layers = TemporalMultiInputSequential(*layers)
         self.use_global = use_global
                 
     def forward(self, local_feat: torch.Tensor, global_feat: Union[torch.Tensor, None]=None):

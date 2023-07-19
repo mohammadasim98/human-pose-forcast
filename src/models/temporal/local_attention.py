@@ -16,10 +16,11 @@ class LocalForwardTemporalAttention(nn.Module):
         num_heads: int,
         hidden_dim: int,
         mlp_dim: int,
+        reduce: bool=False,
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         dropout: float=0.0,
-        need_weights = False,
-        reduce: bool=False
+        need_weights: bool=False,
+        average_attn_weights: bool=True
     ) -> None:
         """Initialize Local Forward Temporal Encoder
 
@@ -46,7 +47,8 @@ class LocalForwardTemporalAttention(nn.Module):
         self.attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=True)
         
         self.need_weights = need_weights
-         
+        self.average_attn_weights = average_attn_weights
+
         # MLP block
         self.ln_2 = norm_layer(hidden_dim)
         self.mlp = MLPBlock(hidden_dim, mlp_dim) 
@@ -72,7 +74,7 @@ class LocalForwardTemporalAttention(nn.Module):
         b, hw, nf, e = inputs.shape 
         # Temporal attention on local features
         attended_values = []
-        
+        attention_weights = []
         # Use oldest feature sequence from history as the first query
         query = inputs[:, 0, :, :]        
         
@@ -86,8 +88,14 @@ class LocalForwardTemporalAttention(nn.Module):
             key_value_ln = self.ln_kv(key_value)
             
             # Forward temporal attention on two subsequent local features at different timestep                   
-            attended_value, attention_weights = self.attention(query_ln, key_value_ln, key_value_ln)
-            
+            attended_value, att_weights = self.attention(
+                query_ln, 
+                key_value_ln, 
+                key_value_ln, 
+                need_weights=self.need_weights, 
+                average_attn_weights=self.average_attn_weights
+            )
+            # attention_weights shape: (1, N, N) where N is temporal sequence length
             #############################################################################################
             # TODO: Think about different ways we could implement/propagate attended values in such a 
             # forward attention mechanism.
@@ -100,12 +108,19 @@ class LocalForwardTemporalAttention(nn.Module):
             
             # Append attended queries
             attended_values.append(query.unsqueeze(1))
+            if att_weights is not None:
+                attention_weights.append(att_weights)
+
+        if len(attention_weights):
+            attention_weights = torch.cat(attention_weights, dim=0)
+        else:
+            attention_weights = None
         
         if self.reduce:
             x3 = self.ln_2(query)
             x4 = self.mlp(x3)
             result = query + x4
-              
+             
         else:
             if len(attended_values):    
                 result = torch.cat(attended_values, axis=1)
@@ -113,9 +128,9 @@ class LocalForwardTemporalAttention(nn.Module):
 
             else: 
                 result = query.unsqueeze(1)
-            
+                
           
-        return result
+        return result, attention_weights
 
 
 class LocalBackwardTemporalAttention(nn.Module):
@@ -128,10 +143,11 @@ class LocalBackwardTemporalAttention(nn.Module):
         num_heads: int,
         hidden_dim: int,
         mlp_dim: int,
+        reduce: bool=False,
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         dropout: float=0.0,
-        need_weights = False,
-        reduce: bool=False
+        need_weights: bool=False,
+        average_attn_weights: bool=True
     ) -> None:
         """Initialize Local Backward Temporal Encoder
 
@@ -157,7 +173,8 @@ class LocalBackwardTemporalAttention(nn.Module):
         self.attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=True)
         
         self.need_weights = need_weights
-         
+        self.average_attn_weights = average_attn_weights
+        
         # MLP block
         self.ln_2 = norm_layer(hidden_dim)
         self.mlp = MLPBlock(hidden_dim, mlp_dim) 
@@ -183,7 +200,7 @@ class LocalBackwardTemporalAttention(nn.Module):
 
         # Temporal attention on local features
         attended_values = []
-        
+        attention_weights = []
         # Use oldest feature sequence from history as the first query
         query = inputs[:, -1, :, :]        
 
@@ -196,33 +213,46 @@ class LocalBackwardTemporalAttention(nn.Module):
             key_value_ln = self.ln_kv(key_value)
             
             # Backward temporal attention on two subsequent local features at different timestep                   
-            attended_value, attention_weights = self.attention(query_ln, key_value_ln, key_value_ln)
+            attended_value, att_weights = self.attention(
+                query_ln, 
+                key_value_ln, 
+                key_value_ln, 
+                need_weights=self.need_weights, 
+                average_attn_weights=self.average_attn_weights
+            )
             
+            # attention_weights shape: (1, N, N) where N is temporal sequence length
             #############################################################################################
             # TODO: Think about different ways we could implement/propagate attended values in such a 
             # Backward attention mechanism.
             # - I though maybe it makes sense to add a residual after getting the attended values with 
             #   with the original key/value and then use it as a query in the next timestep  
             #############################################################################################
-            
             # Update query
             query = key_value + attended_value
             # Append attended queries
             attended_values.append(query.unsqueeze(1))
-        
+            if att_weights is not None:
+                attention_weights.append(att_weights)
+            
+        if len(attention_weights):
+            attention_weights = torch.cat(attention_weights, dim=0)
+        else:
+            attention_weights = None
+
         if self.reduce:
             x3 = self.ln_2(query)
             x4 = self.mlp(x3)
             result = query + x4
-              
+             
         else:
             if len(attended_values):    
                 result = torch.cat(attended_values, axis=1)
                 result = self.ln_2(result)
+                
 
             else: 
                 result = query.unsqueeze(1)
                 
-            
           
-        return result
+        return result, attention_weights
