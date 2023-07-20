@@ -3,7 +3,7 @@
     "n_gpu": 1,
 
     "arch": {
-        "type": "HumanPosePredictorModel3D",
+        "type": "HumanPosePredictorModel",
         "args": {
             "pose": {
                 "spatial": {
@@ -71,13 +71,7 @@
                     }
                 }
             },
-            "projection": {
-                "mlps": [256, 512, 256], 
-                "activation": "gelu",
-                "inp_dim": 38,
-                "out_dim": 75,
-                "num_layers": 2
-            },  
+             
             "activation": {
                 "type": "ReLU",
                 "args": {}
@@ -87,11 +81,19 @@
             "device": "cuda:0"
         }
     },
+    "arch3d": {
+        "mlps": [256, 512, 256], 
+        "activation": "relu",
+        "inp_dim": 38,
+        "out_dim": 75,
+        "num_layers": 3,
+        "num_freq": 64
+    },
     "train_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/train.tfrecord", 
-            "n_scenes": 7, 
+            "n_scenes": 1, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
@@ -100,14 +102,14 @@
             "resize": [224, 224, 3],
             "shuffle": true, 
             "n_workers": 4, 
-            "prefetch_factor": 2
+            "prefetch_factor": 8
         }
     },
     "validation_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/validation.tfrecord", 
-            "n_scenes": 7, 
+            "n_scenes": 1, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
@@ -136,17 +138,31 @@
         }
     },
     "optimizer": {
-        "type": "Adam",
+        "type": "SGD",
         "args":{
-            "lr": 0.007
+            "lr": 0.001
         }
     },
-    "loss": "modified_mpjpe",
+    "loss": {
+        "type": "mpjpe",
+        "args": {}
+    } ,
     "metrics": [
         {
             "type": "VIM",
             "args": {
-                "img_size": 224
+                "name": "vim2d",
+                "img_size": 224,
+                "is_inp_abs": false,
+                "is_root_norm": true
+            } 
+        }, 
+        {
+            "type": "VIM",
+            "args": {
+                "name": "vim3d",
+                "is_inp_abs": false,
+                "is_root_norm": false
             }
         }
     ],
@@ -170,7 +186,7 @@
         "monitor": "min eval_loss",
         "early_stop": 4       
     },
-    "tensorboard": true,
-    "wandb": true
+    "tensorboard": false,
+    "wandb": false
 
 }

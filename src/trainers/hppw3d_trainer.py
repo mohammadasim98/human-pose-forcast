@@ -11,6 +11,7 @@ from utils.io import MetricTracker
 import models.hppw as module_arch
 import models.hppw as module_metric
 import models.hppw as module_loss
+from models.hppw.transforms import cvt_relative_pose
 import models.projection.model as LinearProjection
 
 
@@ -35,7 +36,7 @@ class HPPW3DTrainer(BaseTrainer):
         self.use_root_relative = use_root_relative
         # Prepare Losses
         # self.criterion = getattr(module_loss, config['loss'])
-        self.criterion = getattr(module_loss, config['loss'])
+        self.criterion = getattr(module_loss, config['loss']["type"])(**config["loss"]["args"])
         # Prepare Optimizer
         trainable_params = filter(lambda p: p.requires_grad, self.model.parameters())
         self.optimizer = config.init_obj('optimizer', torch.optim, trainable_params)
@@ -47,11 +48,10 @@ class HPPW3DTrainer(BaseTrainer):
         self._eval_loader = eval_loader
         
         self.log_step = 100 # arbitrary
-
         # Prepare Metrics
         self.metric_ftns = [getattr(module_metric, met['type'])(**met['args']) for met in config['metrics']]
-        self.epoch_metrics = MetricTracker(keys=['loss2d', 'loss3d'] + [str(m) + dim for m in self.metric_ftns for dim in ["2d", "3d"]], writer=self.writer)
-        self.eval_metrics = MetricTracker(keys=['loss2d', 'loss3d'] + [str(m) + dim for m in self.metric_ftns for dim in ["2d", "3d"]], writer=self.writer)
+        self.epoch_metrics = MetricTracker(keys=['loss2d', 'loss3d'] + [str(m) for m in self.metric_ftns], writer=self.writer)
+        self.eval_metrics = MetricTracker(keys=['loss2d', 'loss3d'] + [str(m) for m in self.metric_ftns], writer=self.writer)
 
     def _train_epoch(self):
         """
@@ -72,36 +72,52 @@ class HPPW3DTrainer(BaseTrainer):
 
             
             img_seq = history[0].float().to(self._device)
-            history_pose_seq = history[1].to(self._device)
+            history_pose2d_seq = history[1].float().to(self._device)
             history_root_seq = history[2].float().to(self._device)
             history_mask = history[3].float().to(self._device)
             history_pose3d_seq = history[4].to(self._device)
             history_trans_seq = history[5].to(self._device)
             
-            root_relative_poses = future[0].to(self._device)
-            root_joints = future[1].float().to(self._device)
+            future_pose2d_seq = future[0].float().to(self._device)
+            future_root_seq = future[1].float().to(self._device)
             future_pose3d_seq = future[2].to(self._device)
             future_trans_seq = future[3].to(self._device)
             
+            if self.use_root_relative:
+                history_pose2d_seq = cvt_relative_pose(history_root_seq, history_pose2d_seq, root_scale=img_seq.shape[3])
+                history_pose3d_seq = cvt_relative_pose(history_trans_seq, history_pose3d_seq)
+                
+                future_pose2d_seq = cvt_relative_pose(future_root_seq, future_pose2d_seq, root_scale=img_seq.shape[3])
+                future_pose3d_seq = cvt_relative_pose(future_trans_seq, future_pose3d_seq)
+        
+            
             self.optimizer.zero_grad()
 
-            output2d, _ = self.model(img_seq, history_pose_seq, history_root_seq, history_mask)
+            output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask)
             
-            future_poses2d = torch.cat([root_joints.unsqueeze(2), root_relative_poses], dim=2)
-            history_poses2d = torch.cat([history_root_seq.unsqueeze(2), history_pose_seq], dim=2)
+            if self.use_root_relative:
+                future_poses2d = torch.cat([future_root_seq.unsqueeze(2), future_pose2d_seq], dim=2)
+                history_poses2d = torch.cat([history_root_seq.unsqueeze(2), history_pose2d_seq], dim=2)
+                history_poses3d = torch.cat([history_trans_seq.unsqueeze(2), history_pose3d_seq], dim=2)  
+                future_poses3d = torch.cat([future_trans_seq.unsqueeze(2), future_pose3d_seq], dim=2)  
+                
+            else:
+                future_poses2d = future_pose2d_seq
+                history_poses2d = history_pose2d_seq   
+                history_poses3d = history_pose3d_seq  
+                future_poses3d = future_poses3d  
+                
             
-            history_poses3d = torch.cat([history_trans_seq.unsqueeze(2), history_pose3d_seq], dim=2)  
-            future_poses3d = torch.cat([future_trans_seq.unsqueeze(2), future_pose3d_seq], dim=2)  
             
             poses3d = torch.cat([history_poses3d, future_poses3d], dim=1) 
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
+            
             output3d = self.model_proj(poses2d)
 
             loss_2d = self.criterion(output2d, future_poses2d)
-            loss_3d = self.criterion(output3d, poses3d, use_root_relative=self.use_root_relative)
+            loss_3d = self.criterion(output3d, poses3d)
         
-            loss_2d.backward()
-            loss_3d.backward()
+            (loss_2d + loss_3d).backward()
             self.optimizer.step()
             
             output3d, _ = self.model_proj(output2d)
@@ -111,11 +127,13 @@ class HPPW3DTrainer(BaseTrainer):
             self.epoch_metrics.update('loss2d', loss_2d.item())
             self.epoch_metrics.update('loss3d', loss_3d.item())
             for metric in self.metric_ftns:
-                met2d = metric.compute_2d(output2d, future_poses2d)
-                met3d = metric.compute_3d(output3d, future_poses3d) * 100 # convert to centimeters
-                
-                self.epoch_metrics.update(str(metric) + "2d", met2d.item())
-                self.epoch_metrics.update(str(metric) + "3d", met3d.item())
+                if str(metric) == "vim2d":
+                    met2d = metric.compute(output2d, future_poses2d)
+                    self.epoch_metrics.update(str(metric), met2d.item())
+
+                if str(metric) == "vim3d":
+                    met3d = metric.compute(output3d, future_poses3d) * 100 # convert to centimeters
+                    self.epoch_metrics.update(str(metric), met3d.item())
 
             pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} loss3d: {loss_3d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
 
@@ -158,31 +176,45 @@ class HPPW3DTrainer(BaseTrainer):
         for batch_idx, (history, future) in enumerate(loader): 
             
             img_seq = history[0].float().to(self._device)
-            history_pose_seq = history[1].to(self._device)
+            history_pose2d_seq = history[1].float().to(self._device)
             history_root_seq = history[2].float().to(self._device)
             history_mask = history[3].float().to(self._device)
             history_pose3d_seq = history[4].to(self._device)
             history_trans_seq = history[5].to(self._device)
             
-            future__pose_seq = future[0].to(self._device)
+            future_pose2d_seq = future[0].float().to(self._device)
             future_root_seq = future[1].float().to(self._device)
             future_pose3d_seq = future[2].to(self._device)
             future_trans_seq = future[3].to(self._device)
             
-            output2d, _ = self.model(img_seq, history_pose_seq, history_root_seq, history_mask)
+            if self.use_root_relative:
+                history_pose2d_seq = cvt_relative_pose(history_root_seq, history_pose2d_seq)
+                history_pose3d_seq = cvt_relative_pose(history_trans_seq, history_pose3d_seq)
+                
+                future_pose2d_seq = cvt_relative_pose(future_root_seq, future_pose2d_seq)
+                future_pose3d_seq = cvt_relative_pose(future_trans_seq, future_pose3d_seq)
+        
+            output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask)
             
-            future_poses2d = torch.cat([future_root_seq.unsqueeze(2), future__pose_seq], dim=2)
-            history_poses2d = torch.cat([history_root_seq.unsqueeze(2), history_pose_seq], dim=2)
-            
-            history_poses3d = torch.cat([history_trans_seq.unsqueeze(2), history_pose3d_seq], dim=2)  
-            future_poses3d = torch.cat([future_trans_seq.unsqueeze(2), future_pose3d_seq], dim=2)  
+            if self.use_root_relative:
+                future_poses2d = torch.cat([future_root_seq.unsqueeze(2), future_pose2d_seq], dim=2)
+                history_poses2d = torch.cat([history_root_seq.unsqueeze(2), history_pose2d_seq], dim=2)
+                history_poses3d = torch.cat([history_trans_seq.unsqueeze(2), history_pose3d_seq], dim=2)  
+                future_poses3d = torch.cat([future_trans_seq.unsqueeze(2), future_pose3d_seq], dim=2)  
+                
+            else:
+                future_poses2d = future_pose2d_seq
+                history_poses2d = history_pose2d_seq   
+                history_poses3d = history_pose3d_seq  
+                future_poses3d = future_poses3d   
             
             poses3d = torch.cat([history_poses3d, future_poses3d], dim=1) 
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
+            
             output3d = self.model_proj(poses2d)
 
             loss_2d = self.criterion(output2d, future_poses2d)
-            loss_3d = self.criterion(output3d, poses3d, use_root_relative=self.use_root_relative)
+            loss_3d = self.criterion(output3d, poses3d)
             
             output3d, _ = self.model_proj(output2d)
 
@@ -191,11 +223,13 @@ class HPPW3DTrainer(BaseTrainer):
             self.eval_metrics.update('loss2d', loss_2d.item())
             self.eval_metrics.update('loss3d', loss_3d.item())            
             for metric in self.metric_ftns:
-                met2d = metric.compute_2d(output2d, future_poses2d)
-                met3d = metric.compute_3d(output3d, future_poses3d) * 100 # convert to centimeters
+                if str(metric) == "vim2d":
+                    met2d = metric.compute(output2d, future_poses2d)
+                    self.eval_metrics.update(str(metric), met2d.item())
 
-                self.eval_metrics.update(str(metric) + "2d", met2d.item())
-                self.eval_metrics.update(str(metric) + "3d", met3d.item())
+                if str(metric) == "vim3d":
+                    met3d = metric.compute(output3d, future_poses3d) * 100 # convert to centimeters
+                    self.eval_metrics.update(str(metric), met3d.item())
 
             pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} loss3d: {loss_3d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
             # if self.writer is not None: self.writer.add_image('input_valid', make_grid(history.cpu(), nrow=8, normalize=True))
