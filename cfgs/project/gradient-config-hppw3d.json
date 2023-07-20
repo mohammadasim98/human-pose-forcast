@@ -154,7 +154,7 @@
                 "name": "vim2d",
                 "img_size": 224,
                 "is_inp_abs": false,
-                "is_root_norm": true
+                "is_pose_norm": true
             } 
         }, 
         {
@@ -162,7 +162,7 @@
             "args": {
                 "name": "vim3d",
                 "is_inp_abs": false,
-                "is_root_norm": false
+                "is_pose_norm": false
             }
         }
     ],
@@ -186,6 +186,8 @@
         "monitor": "min eval_loss",
         "early_stop": 4       
     },
+    "pose_norm": true,
+    "use_root_relative": true,
     "tensorboard": false,
     "wandb": false
 

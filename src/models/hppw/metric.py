@@ -6,21 +6,20 @@ from models.hppw.transforms import cvt_absolute_pose
 
 class VIM:
     
-    def __init__(self, name, img_size: int=224, is_inp_abs: bool=False, is_root_norm: bool=False):
+    def __init__(self, name, img_size: int=224, is_inp_abs: bool=False, is_pose_norm: bool=False):
         self.img_size = img_size
         self.is_inp_abs = is_inp_abs
         self.name = name
         
     def compute(self, prediction, future):
-
+        
+        if is_pose_norm:
+            future = future * self.img_size
+            prediction = prediction * self.img_size
+                
         if not self.is_inp_abs:
-            if is_root_norm:
-                root_joints_gt = future[..., 0, :] * self.img_size
-                root_joints_pred = prediction[..., 0, :] * self.img_size
-            
-            else:
-                root_joints_gt = future[..., 0, :]
-                root_joints_pred = prediction[..., 0, :]
+            root_joints_gt = future[..., 0, :]
+            root_joints_pred = prediction[..., 0, :]
             
             relative_poses_gt = future[..., 1:, :]
             relative_poses_pred = prediction[..., 1:, :]

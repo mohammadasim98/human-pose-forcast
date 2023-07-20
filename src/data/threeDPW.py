@@ -28,7 +28,6 @@ class ThreeDPWTFRecordDataset():
         shuffle: bool=False, 
         n_workers: int=0, 
         prefetch_factor: int=None,
-        norm_root: bool=True,
         transforms=None
         ) -> None:  
         """Wrapper on top of tfrecord.torch.dataset.TFRecordDataset
@@ -68,7 +67,6 @@ class ThreeDPWTFRecordDataset():
         self.prefetch_factor = prefetch_factor
         self.subsample = subsample
         self.resize = resize
-        self.norm_root = norm_root
         
         self.n_scenes = n_scenes
         self.n_workers = n_workers
@@ -247,13 +245,8 @@ class ThreeDPWTFRecordDataset():
         """
         factor = np.array(self.resize) / np.array(shape)
         rescaled_pose = root*np.tile(np.expand_dims([*factor[:2][::-1]], axis=(0,1)), (1, root.shape[1], 1))
-        if self.norm_root:
-            resized_x = np.expand_dims(rescaled_pose[..., 0] / self.resize[0], axis=-1)
-            resized_y = np.expand_dims(rescaled_pose[..., 1] / self.resize[1], axis=-1)
-            rescaled_pose = np.concatenate([resized_x, resized_y], axis=-1) 
-            return rescaled_pose
-        else:
-            return rescaled_pose.astype(int)
+
+        return rescaled_pose.astype(int)
     
     def __getitem__(self, index):
         """ Get a single item representing a windowed history and future

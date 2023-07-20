@@ -18,7 +18,7 @@ import models.projection.model as LinearProjection
 
 class HPPW3DTrainer(BaseTrainer):
 
-    def __init__(self, config, train_loader, eval_loader=None, use_root_relative: bool=False):
+    def __init__(self, config, train_loader, eval_loader=None):
         """
         Create the model, loss criterion, optimizer, and dataloaders
         And anything else that might be needed during training. (e.g. device type)
@@ -33,7 +33,8 @@ class HPPW3DTrainer(BaseTrainer):
 
         # Simply Log the model (enable if you want to see the model architecture)
         # self.logger.info(self.model)
-        self.use_root_relative = use_root_relative
+        self.use_root_relative = config["use_root_relative"]
+        self.pose_norm = config["pose_norm"]
         # Prepare Losses
         # self.criterion = getattr(module_loss, config['loss'])
         self.criterion = getattr(module_loss, config['loss']["type"])(**config["loss"]["args"])
@@ -53,6 +54,7 @@ class HPPW3DTrainer(BaseTrainer):
         self.epoch_metrics = MetricTracker(keys=['loss2d', 'loss3d'] + [str(m) for m in self.metric_ftns], writer=self.writer)
         self.eval_metrics = MetricTracker(keys=['loss2d', 'loss3d'] + [str(m) for m in self.metric_ftns], writer=self.writer)
 
+        
     def _train_epoch(self):
         """
         Training logic for an epoch. Only takes care of doing a single training loop.
@@ -84,12 +86,18 @@ class HPPW3DTrainer(BaseTrainer):
             future_trans_seq = future[3].to(self._device)
             
             if self.use_root_relative:
-                history_pose2d_seq = cvt_relative_pose(history_root_seq, history_pose2d_seq, root_scale=img_seq.shape[3])
+                history_pose2d_seq = cvt_relative_pose(history_root_seq, history_pose2d_seq)
                 history_pose3d_seq = cvt_relative_pose(history_trans_seq, history_pose3d_seq)
                 
-                future_pose2d_seq = cvt_relative_pose(future_root_seq, future_pose2d_seq, root_scale=img_seq.shape[3])
+                future_pose2d_seq = cvt_relative_pose(future_root_seq, future_pose2d_seq)
                 future_pose3d_seq = cvt_relative_pose(future_trans_seq, future_pose3d_seq)
         
+            if self.pose_norm:
+                history_pose2d_seq /= img_seq.shape[3]
+                history_root_seq /= img_seq.shape[3]
+                
+                future_pose2d_seq /= img_seq.shape[3]
+                future_root_seq /= img_seq.shape[3]
             
             self.optimizer.zero_grad()
 
@@ -193,7 +201,14 @@ class HPPW3DTrainer(BaseTrainer):
                 
                 future_pose2d_seq = cvt_relative_pose(future_root_seq, future_pose2d_seq)
                 future_pose3d_seq = cvt_relative_pose(future_trans_seq, future_pose3d_seq)
-        
+
+            if self.pose_norm:
+                history_pose2d_seq /= img_seq.shape[3]
+                history_root_seq /= img_seq.shape[3]
+                
+                future_pose2d_seq /= img_seq.shape[3]
+                future_root_seq /= img_seq.shape[3]
+            
             output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask)
             
             if self.use_root_relative:
