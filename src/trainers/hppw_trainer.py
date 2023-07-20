@@ -80,7 +80,7 @@ class HPPWTrainer(BaseTrainer):
 
             self.optimizer.zero_grad()
 
-            output = self.model(img_seq, history_pose_seq, history_root_seq, history_mask)
+            output, _ = self.model(img_seq, history_pose_seq, history_root_seq, history_mask)
 
             future_poses = torch.cat([root_joints.unsqueeze(2), root_relative_poses], dim=2)          
             loss = self.criterion(output, future_poses)
@@ -92,7 +92,7 @@ class HPPWTrainer(BaseTrainer):
             if self.writer is not None: self.writer.set_step((self.current_epoch - 1) * len(self._train_loader) + batch_idx)
             self.epoch_metrics.update('loss', loss.item())
             for metric in self.metric_ftns:
-                met = metric.compute(output, future_poses)
+                met = metric.compute_2d(output, future_poses)
                 self.epoch_metrics.update(str(metric), met.item())
 
             pbar.set_description(f"Train Epoch: {self.current_epoch} Loss: {loss.item():.6f} VIM: {met.item() if met is not None else None:.5f}")
@@ -143,7 +143,7 @@ class HPPWTrainer(BaseTrainer):
             root_relative_poses = future[0].to(self._device)
             root_joints = future[1].float().to(self._device)
             
-            output = self.model(img_seq, history_pose_seq, history_root_seq, history_mask)
+            output, _ = self.model(img_seq, history_pose_seq, history_root_seq, history_mask)
             
             future_poses = torch.cat([root_joints.unsqueeze(2), root_relative_poses], dim=2)          
             loss = self.criterion(output, future_poses)
@@ -151,7 +151,7 @@ class HPPWTrainer(BaseTrainer):
             self.eval_metrics.update('loss', loss.item())
             met = None
             for metric in self.metric_ftns:
-                met = metric.compute(output, future_poses)
+                met = metric.compute_2d(output, future_poses)
                 self.eval_metrics.update(str(metric), met.item())
 
             pbar.set_description(f"Eval Loss: {loss.item():.6f}  VIM: {met.item() if met is not None else None:.5f}")

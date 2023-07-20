@@ -72,25 +72,26 @@
                 }
             },
             "projection": {
-                "mlps": [128, 512, 128], 
+                "mlps": [256, 512, 256], 
                 "activation": "gelu",
-                "inp_dim": 2,
-                "out_dim": 3,
+                "inp_dim": 38,
+                "out_dim": 75,
                 "num_layers": 2
-            },
+            },  
             "activation": {
                 "type": "ReLU",
                 "args": {}
             },
             "unroll": true,
-            "future_window": 15
+            "future_window": 15,
+            "device": "cuda:0"
         }
     },
     "train_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/train.tfrecord", 
-            "n_scenes": 15, 
+            "n_scenes": 7, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
@@ -98,15 +99,15 @@
             "batch_size": 16, 
             "resize": [224, 224, 3],
             "shuffle": true, 
-            "n_workers": 8, 
-            "prefetch_factor": 32
+            "n_workers": 4, 
+            "prefetch_factor": 2
         }
     },
     "validation_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/validation.tfrecord", 
-            "n_scenes": 15, 
+            "n_scenes": 7, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
@@ -114,8 +115,8 @@
             "batch_size": 16, 
             "resize": [224, 224, 3],
             "shuffle": false, 
-            "n_workers": 8, 
-            "prefetch_factor": 32
+            "n_workers": 4, 
+            "prefetch_factor": 8
         }
     },
     "test_loader": {
@@ -135,9 +136,9 @@
         }
     },
     "optimizer": {
-        "type": "SGD",
+        "type": "Adam",
         "args":{
-            "lr": 0.01
+            "lr": 0.007
         }
     },
     "loss": "modified_mpjpe",
@@ -153,7 +154,7 @@
         "type": "StepLR",
         "args": {
             "step_size": 5,
-            "gamma": 0.8,
+            "gamma": 0.85,
             "verbose": true
         }
     },

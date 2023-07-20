@@ -21,7 +21,8 @@ class HumanPosePredictorModel(nn.Module):
         image: dict,
         activation: dict,
         future_window: int,
-        unroll: bool=True
+        unroll: bool=True,
+        device: str="cuda:0"
     ) -> None:
         super().__init__()
         
@@ -56,7 +57,7 @@ class HumanPosePredictorModel(nn.Module):
         self.linear = nn.Linear(self.pose_emb_dim, 2)
 
         self.unroll = unroll
-        
+        self.device = device
 
     
     def pose_encoding(self, relative_poses, root_joints, history_window, unroll: bool=False):
@@ -244,12 +245,13 @@ class HumanPosePredictorModel3D(HumanPosePredictorModel):
         activation: dict,
         projection: dict,
         future_window: int,
-        unroll: bool=True
+        unroll: bool=True,
+        device: str="cuda:0"
     ) -> None:
-        super().__init__(pose, image, activation, future_window, unroll)
+        super().__init__(pose, image, activation, future_window, unroll, device)
         
-        self.projection = LinearProjection(**projection)
-        
+        self.projection = LinearProjection(**projection).cuda()
+
     def forward(self, img_seq: torch.Tensor, relative_pose_seq: torch.Tensor, root_joint_seq: torch.Tensor, mask: Union[torch.Tensor, None], proj_future: bool=True):
         """Perform forward pass
 
@@ -303,6 +305,7 @@ class HumanPosePredictorModel3D(HumanPosePredictorModel):
 
         out_2d = self.linear(out_poses[:, 1:, ...])
         history_poses = torch.cat([root_joint_seq.unsqueeze(2), relative_pose_seq], dim=2)
+        
         if proj_future:
             proj = torch.cat([history_poses, out_2d], dim=1)
         else:

@@ -3,7 +3,7 @@ import torchvision
 import torch.nn as nn
 
 from torchvision.ops.misc import MLP
-
+from models.projection.mlp import MLPBlock
         
         
 
@@ -15,7 +15,8 @@ class LinearProjection(nn.Module):
         activation: str="gelu",
         inp_dim: int=2,
         out_dim: int=3,
-        num_layers: int=4
+        num_layers: int=4,
+        device: str="cuda:0"
     ) -> None:
         super().__init__()
         
@@ -32,24 +33,25 @@ class LinearProjection(nn.Module):
         else:
             activation_layer = None
             
-        self.inp_proj = MLP(inp_dim, [mlps[0]], activation_layer=activation_layer)
+        self.inp_proj = MLPBlock(inp_dim, [mlps[0]], activation_layer=activation_layer).to(device)
         in_dim = mlps[0]
         for i in range(num_layers):
-            layers.append(MLP(in_dim, [*mlps], activation_layer=activation_layer))
+            layers.append(MLPBlock(in_dim, [*mlps], activation_layer=activation_layer).to(device))
             in_dim = mlps[-1]
             
-        self.out_proj = MLP(in_dim, [out_dim], activation_layer=activation_layer)
+        self.out_proj = MLPBlock(in_dim, [out_dim], activation_layer=activation_layer).to(device)
 
         self.layers = layers
     
         
     
     def forward(self, inp):
-        
+        b, n, j, _ = inp.shape
+        inp = inp.view(b, n, -1)
         inputs = self.inp_proj(inp)
-        
+
         for layer in self.layers:
             out = layer(inputs)
             inputs = inputs + out
-        
-        return self.out_proj(out)
+        out = self.out_proj(out)
+        return out.view(b, n, -1, 3)

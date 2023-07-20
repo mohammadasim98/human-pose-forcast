@@ -128,9 +128,9 @@
         }
     },
     "optimizer": {
-        "type": "SGD",
+        "type": "Adam",
         "args":{
-            "lr": 0.01
+            "lr": 0.001
         }
     },
     "loss": "modified_mpjpe",
