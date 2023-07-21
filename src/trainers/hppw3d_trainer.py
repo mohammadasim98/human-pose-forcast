@@ -36,6 +36,7 @@ class HPPW3DTrainer(BaseTrainer):
         self.use_root_relative = config["use_root_relative"]
         self.use_pose_norm = config["use_pose_norm"]
         self.use_projection = config["use_projection"]
+        self.curriculum = config["curriculum"]
         # Prepare Losses
         # self.criterion = getattr(module_loss, config['loss'])
         self.criterion = getattr(module_loss, config['loss']["type"])
@@ -69,22 +70,28 @@ class HPPW3DTrainer(BaseTrainer):
         self.epoch_metrics.reset()
         self.logger.debug(f"==> Start Training Epoch {self.current_epoch}/{self.epochs}, lr={self.optimizer.param_groups[0]['lr']:.6f} ")
         loss3d = None
-
+        self.history_window = self.curriculum["history_window"]
+        self.future_window = self.curriculum["future_window"]
+        
         pbar = tqdm(total=len(self._train_loader) * self._train_loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
         for batch_idx, (history, future) in enumerate(self._train_loader):
+            if self.history_window > history[0].shape[1]:
+                history_window = history[0].shape[1]
+                
+            if self.future_window > future[0].shape[1]:
+                history_window = future[0].shape[1]
 
-            
-            img_seq = history[0].float().to(self._device)
-            history_pose2d_seq = history[1].float().to(self._device)
-            history_root_seq = history[2].float().to(self._device)
+            img_seq = history[0][:, -self.history_window:, ...].float().to(self._device)
+            history_pose2d_seq = history[1][:, -self.history_window:, ...].float().to(self._device)
+            history_root_seq = history[2][:, -self.history_window:, ...].float().to(self._device)
             history_mask = history[3].float().to(self._device)
-            history_pose3d_seq = history[4].to(self._device)
-            history_trans_seq = history[5].to(self._device)
+            history_pose3d_seq = history[4][:, -self.history_window:, ...].to(self._device)
+            history_trans_seq = history[5][:, -self.history_window:, ...].to(self._device)
             
-            future_pose2d_seq = future[0].float().to(self._device)
-            future_root_seq = future[1].float().to(self._device)
-            future_pose3d_seq = future[2].to(self._device)
-            future_trans_seq = future[3].to(self._device)
+            future_pose2d_seq = future[0][:, :self.future_window, ...].float().to(self._device)
+            future_root_seq = future[1][:, :self.future_window, ...].float().to(self._device)
+            future_pose3d_seq = future[2][:, :self.future_window, ...].to(self._device)
+            future_trans_seq = future[3][:, :self.future_window, ...].to(self._device)
             
             if self.use_root_relative:
                 history_pose2d_seq = cvt_relative_pose(history_root_seq, history_pose2d_seq)
@@ -195,17 +202,23 @@ class HPPW3DTrainer(BaseTrainer):
 
         for batch_idx, (history, future) in enumerate(loader): 
             
-            img_seq = history[0].float().to(self._device)
-            history_pose2d_seq = history[1].float().to(self._device)
-            history_root_seq = history[2].float().to(self._device)
+            if self.history_window > history[0].shape[1]:
+                history_window = history[0].shape[1]
+                
+            if self.future_window > future[0].shape[1]:
+                history_window = future[0].shape[1]
+
+            img_seq = history[0][:, -self.history_window:, ...].float().to(self._device)
+            history_pose2d_seq = history[1][:, -self.history_window:, ...].float().to(self._device)
+            history_root_seq = history[2][:, -self.history_window:, ...].float().to(self._device)
             history_mask = history[3].float().to(self._device)
-            history_pose3d_seq = history[4].to(self._device)
-            history_trans_seq = history[5].to(self._device)
+            history_pose3d_seq = history[4][:, -self.history_window:, ...].to(self._device)
+            history_trans_seq = history[5][:, -self.history_window:, ...].to(self._device)
             
-            future_pose2d_seq = future[0].float().to(self._device)
-            future_root_seq = future[1].float().to(self._device)
-            future_pose3d_seq = future[2].to(self._device)
-            future_trans_seq = future[3].to(self._device)
+            future_pose2d_seq = future[0][:, :self.future_window, ...].float().to(self._device)
+            future_root_seq = future[1][:, :self.future_window, ...].float().to(self._device)
+            future_pose3d_seq = future[2][:, :self.future_window, ...].to(self._device)
+            future_trans_seq = future[3][:, :self.future_window, ...].to(self._device)
             
             if self.use_root_relative:
                 history_pose2d_seq = cvt_relative_pose(history_root_seq, history_pose2d_seq)

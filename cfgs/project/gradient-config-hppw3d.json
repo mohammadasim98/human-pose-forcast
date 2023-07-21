@@ -136,6 +136,12 @@
             "prefetch_factor": 32
         }
     },
+    "curriculum": {
+        "history_windows": 1,
+        "future_windows": 1,
+        "step": 2,
+        "duration": 2
+    },
     "optimizer": {
         "type": "SGD",
         "args":{
@@ -153,7 +159,7 @@
                 "name": "vim2d",
                 "img_size": 224
             } 
-        }, 
+        }
 
     ],
     "lr_scheduler": {

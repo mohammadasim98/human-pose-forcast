@@ -102,6 +102,11 @@ class BaseTrainer:
         if self.wandb_enabled: wandb.watch(self.model, self.criterion, log='all')
         states = {"loss2d": {"train": [], "val": []}, "loss3d": {"train": [], "val": []}}
         for epoch in range(self.start_epoch, self.epochs + 1):
+            
+            if epoch % self.curriculum["duration"] == 0:
+                self.future_window += self.curriculum["step"]
+                self.history_window += self.curriculum["step"]
+            
             self.current_epoch = epoch
             train_result = self._train_epoch()
             states["loss2d"]["train"].append(train_result["loss2d"])
