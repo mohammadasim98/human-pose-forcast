@@ -137,9 +137,9 @@
         }
     },
     "optimizer": {
-        "type": "Adam",
+        "type": "SGD",
         "args":{
-            "lr": 0.002
+            "lr": 0.01
         }
     },
     "loss": {
@@ -154,12 +154,7 @@
                 "img_size": 224
             } 
         }, 
-        {
-            "type": "VIM",
-            "args": {
-                "name": "vim3d"
-            }
-        }
+
     ],
     "lr_scheduler": {
         "type": "StepLR",
@@ -179,10 +174,11 @@
         "eval_period": 1,
         "verbosity": 2,
         "monitor": "min eval_loss2d",
-        "early_stop": 4       
+        "early_stop": 6       
     },
     "use_pose_norm": true,
     "use_root_relative": true,
+    "use_projection": false,
     "tensorboard": false,
     "wandb": true
 

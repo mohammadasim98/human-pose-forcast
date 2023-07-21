@@ -105,7 +105,8 @@ class BaseTrainer:
             self.current_epoch = epoch
             train_result = self._train_epoch()
             states["loss2d"]["train"].append(train_result["loss2d"])
-            states["loss3d"]["train"].append(train_result["loss3d"])
+            if self.use_projection:
+                states["loss3d"]["train"].append(train_result["loss3d"])
             # save logged informations into log dict
             log = {'epoch': self.current_epoch}
             log.update(train_result)
@@ -113,7 +114,8 @@ class BaseTrainer:
             if self._do_evaluate():
                 eval_result = self.evaluate()
                 states["loss2d"]["val"].append(eval_result["loss2d"])
-                states["loss3d"]["val"].append(eval_result["loss3d"])
+                if self.use_projection:
+                    states["loss3d"]["val"].append(eval_result["loss3d"])
                 # save eval information to the log dict as well
                 log.update({f'eval_{key}': value for key, value in eval_result.items()})
                 if self.wandb_enabled:

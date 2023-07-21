@@ -35,6 +35,7 @@ class HPPW3DTrainer(BaseTrainer):
         # self.logger.info(self.model)
         self.use_root_relative = config["use_root_relative"]
         self.use_pose_norm = config["use_pose_norm"]
+        self.use_projection = config["use_projection"]
         # Prepare Losses
         # self.criterion = getattr(module_loss, config['loss'])
         self.criterion = getattr(module_loss, config['loss']["type"])
@@ -66,8 +67,8 @@ class HPPW3DTrainer(BaseTrainer):
         ######
         self.model.train()
         self.epoch_metrics.reset()
-
         self.logger.debug(f"==> Start Training Epoch {self.current_epoch}/{self.epochs}, lr={self.optimizer.param_groups[0]['lr']:.6f} ")
+        loss3d = None
 
         pbar = tqdm(total=len(self._train_loader) * self._train_loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
         for batch_idx, (history, future) in enumerate(self._train_loader):
@@ -119,33 +120,42 @@ class HPPW3DTrainer(BaseTrainer):
             
             
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
-            poses3d = torch.cat([history_poses3d, future_poses3d], dim=1) 
-
-            output3d = self.model_proj(poses2d)
-
             loss_2d = self.criterion(output2d, future_poses2d)
-            loss_3d = self.criterion(output3d, poses3d)
+            loss = loss_2d
+
+            if self.use_projection:
+                poses3d = torch.cat([history_poses3d, future_poses3d], dim=1) 
+                
+                output3d = self.model_proj(poses2d)
+                loss_3d = self.criterion(output3d, poses3d)
+                loss += loss_3d
+                
+                output3d = self.model_proj(output2d)
+                self.epoch_metrics.update('loss3d', loss_3d.item())
             
-            loss = loss_2d + loss_3d
             loss.backward()
             self.optimizer.step()
-            
-            output3d = self.model_proj(output2d)
+                            
 
-            met = None
+            met2d = None
+            met3d = None
             if self.writer is not None: self.writer.set_step((self.current_epoch - 1) * len(self._train_loader) + batch_idx)
             self.epoch_metrics.update('loss2d', loss_2d.item())
-            self.epoch_metrics.update('loss3d', loss_3d.item())
             for metric in self.metric_ftns:
                 if str(metric) == "vim2d":
                     met2d = metric.compute(output2d, future_poses2d, self.use_pose_norm, self.use_root_relative)
                     self.epoch_metrics.update(str(metric), met2d.item())
 
-                if str(metric) == "vim3d":
+                if str(metric) == "vim3d" and self.use_projection:
                     met3d = metric.compute(output3d, future_poses3d, False, self.use_root_relative) * 100 # convert to centimeters
                     self.epoch_metrics.update(str(metric), met3d.item())
-
-            pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} loss3d: {loss_3d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
+            
+            if self.use_projection:
+                
+                pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} loss3d: {loss_3d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
+            else:
+                
+                pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f}")
 
             # if batch_idx % self.log_step == 0:
             #     # self.logger.debug('Train Epoch: {} Loss: {:.6f}'.format(self.current_epoch, loss.item()))
@@ -178,7 +188,7 @@ class HPPW3DTrainer(BaseTrainer):
 
         self.model.eval()
         self.eval_metrics.reset()
-
+        loss3d = None
         self.logger.debug(f"++> Evaluate at epoch {self.current_epoch} ...")
 
         pbar = tqdm(total=len(loader) * loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
@@ -225,30 +235,37 @@ class HPPW3DTrainer(BaseTrainer):
                 history_poses3d = history_pose3d_seq  
                 future_poses3d = future_poses3d   
             
-            poses3d = torch.cat([history_poses3d, future_poses3d], dim=1) 
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
-            
-            output3d = self.model_proj(poses2d)
-
             loss_2d = self.criterion(output2d, future_poses2d)
-            loss_3d = self.criterion(output3d, poses3d)
-            
-            output3d = self.model_proj(output2d)
 
-            met = None
+            
+            if self.use_projection:
+                poses3d = torch.cat([history_poses3d, future_poses3d], dim=1) 
+                
+                output3d = self.model_proj(poses2d)
+                loss_3d = self.criterion(output3d, poses3d)
+                
+                output3d = self.model_proj(output2d)
+                self.eval_metrics.update('loss3d', loss_3d.item())            
+
+            met2d = None
+            met3d = None
             if self.writer is not None: self.writer.set_step((self.current_epoch - 1) * len(self._train_loader) + batch_idx)
             self.eval_metrics.update('loss2d', loss_2d.item())
-            self.eval_metrics.update('loss3d', loss_3d.item())            
             for metric in self.metric_ftns:
                 if str(metric) == "vim2d":
                     met2d = metric.compute(output2d, future_poses2d, self.use_pose_norm, self.use_root_relative)
                     self.eval_metrics.update(str(metric), met2d.item())
 
-                if str(metric) == "vim3d":
+                if str(metric) == "vim3d" and self.use_projection:
                     met3d = metric.compute(output3d, future_poses3d, False, self.use_root_relative) * 100 # convert to centimeters
                     self.eval_metrics.update(str(metric), met3d.item())
-
-            pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} loss3d: {loss_3d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
+            
+            if self.use_projection:
+                pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} loss3d: {loss_3d.item():.6f if loss3d is not None else ''} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
+            
+            else:
+                pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f}")
             # if self.writer is not None: self.writer.add_image('input_valid', make_grid(history.cpu(), nrow=8, normalize=True))
             pbar.update(loader.batch_size)
                 
