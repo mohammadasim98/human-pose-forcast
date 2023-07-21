@@ -159,21 +159,24 @@ def visualize_tfrecord_dataloader(loader, viz_3d: bool=True):
     for i, (history, future) in enumerate(loader):
         for sample in range((history[0].shape)[0]):
             img = history[0][sample][0].numpy()
-            norm_pose = history[1][sample][0].numpy()
-            root_joint = history[2][sample][0].numpy() * 224
+            abs_pose = history[1][sample][0].numpy()
+            root_joint = history[2][sample][0].numpy() 
             mask = history[3][sample].numpy()
             pose_3d = history[4][sample][0].numpy()
             trans_3d = history[5][sample][0].numpy()
             
-            abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
+            print(root_joint)
+            abs_pose = np.expand_dims(abs_pose, axis=0).astype(int)
+            # abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
             annoted_img = annotate_pose_2d(img=img, pose=abs_pose, color=(255, 0, 0), radius=2, thickness=2, text=False)
-            annoted_img = annotate_root_2d(img=annoted_img,root=np.expand_dims(root_joint, 0), color=(0, 0, 255), thickness=3)
+            annoted_img = annotate_root_2d(img=annoted_img, root=np.expand_dims(root_joint, 0), color=(0, 0, 255), thickness=3)
             cv2.imshow("History Image", img)
             cv2.imshow("History Mask", mask*255)
             
-            norm_pose = future[0][sample][0].numpy()
-            root_joint = future[1][sample][0].numpy()*224
-            abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
+            abs_pose = future[0][sample][0].numpy()
+            abs_pose = np.expand_dims(abs_pose, axis=0).astype(int)
+            root_joint = future[1][sample][0].numpy()
+            # abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
             annoted_img = annotate_pose_2d(img=img, pose=abs_pose, color=(0, 255, 0), radius=2, thickness=2, text=False)
             annoted_img = annotate_root_2d(img=annoted_img,root=np.expand_dims(root_joint, 0), color=(0, 255, 255), thickness=3)
             cv2.imshow("Future Image", img)

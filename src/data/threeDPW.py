@@ -97,11 +97,10 @@ class ThreeDPWTFRecordDataset():
         flatten_mask = np.frombuffer(features["pmask"], dtype=np.uint8)
         
         # flatten_norm_pose_2d = np.frombuffer(features["2d_norm_poses"], dtype=np.float32)
-        flatten_poses_2d = np.frombuffer(features["2d_poses"], dtype=np.float32)
+        flatten_poses_2d = np.frombuffer(features["2d_poses"], dtype=np.int32)
         flatten_root_joints_2d = np.frombuffer(features["2d_root_joints"], dtype=np.int32)
         flatten_poses_3d = np.frombuffer(features["3d_poses"], dtype=np.float32)
         flatten_trans_3d = np.frombuffer(features["trans"], dtype=np.float32)
-
         image_strings = np.reshape(flatten_image, (features["frames"][0], -1))
         mask = np.reshape(flatten_mask, (features["height"][0], features["width"][0], -1))
 
@@ -113,6 +112,7 @@ class ThreeDPWTFRecordDataset():
         if self.resize is not None:
             mask = self.resize_mask(mask)
             root_joints_2d = self.resize_root(root_joints_2d, (features["height"][0], features["width"][0], 3))
+            poses_2d = self.resize_pose(poses_2d, (features["height"][0], features["width"][0], 3))
 
         return features["frames"][0], image_strings, mask, poses_2d, root_joints_2d, poses_3d, trans_3d
 
@@ -209,19 +209,19 @@ class ThreeDPWTFRecordDataset():
 
         return cv2.resize(img, self.resize[:2][::-1])
     
-    # def resize_pose(self, pose, shape):
-    #     """Resize pose.
+    def resize_pose(self, pose, shape):
+        """Resize pose.
 
-    #     Args:
-    #         root (numpy.ndarray): A (np, N, 18, 3) numpy array.
+        Args:
+            root (numpy.ndarray): A (np, N, 18, 3) numpy array.
 
-    #     Returns:
-    #         numpy.ndarray: A (np, N, 18, 3) rescaled pose with np number of people.
-    #     """
-    #     factor = np.array(self.resize) / np.array(shape)
-    #     rescaled_pose = pose*np.tile(np.expand_dims([*factor[:2][::-1], factor[2]], axis=(0, 1, 2)), (1, pose.shape[1], pose.shape[2], 1))
+        Returns:
+            numpy.ndarray: A (np, N, 18, 3) rescaled pose with np number of people.
+        """
+        factor = np.array(self.resize) / np.array(shape)
+        rescaled_pose = pose*np.tile(np.expand_dims([*factor[:2][::-1]], axis=(0, 1, 2)), (1, pose.shape[1], pose.shape[2], 1))
 
-    #     return rescaled_pose.astype(int)
+        return rescaled_pose.astype(int)
     
     def resize_mask(self, mask):
         """Resize mask.
