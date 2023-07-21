@@ -8,20 +8,20 @@
             "pose": {
                 "spatial": {
                     "encoder":{
-                        "num_layers": 2,
+                        "num_layers": 6,
                         "num_heads": 8,
                         "hidden_dim": 256,
-                        "mlp_dim": 512,
+                        "mlp_dim": 768,
                         "dropout": 0.0
                     }
                 },
                 "spatiotemporal": {
                     "spatial": {
                         "decoder": {
-                            "num_layers": 2,
+                            "num_layers": 6,
                             "num_heads": 8,
                             "hidden_dim": 256,
-                            "out_dim": 512,
+                            "out_dim": 768,
                             "dropout": 0.0,
                             "use_global": false
                         }
@@ -51,7 +51,7 @@
                     "encoder":{
                         "image_size": 224, 
                         "patch_size": 16,  
-                        "num_layers": 2, 
+                        "num_layers": 6, 
                         "num_heads": 12,  
                         "hidden_dim": 768,
                         "mlp_dim": 3072,
@@ -83,49 +83,48 @@
     },
     "arch3d": {
         "mlps": [256, 512, 256], 
-        "activation": "relu",
+        "activation": "gelu",
         "inp_dim": 38,
         "out_dim": 75,
-        "num_layers": 3,
-        "num_freq": 64
+        "num_layers": 3
     },
     "train_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/train.tfrecord", 
-            "n_scenes": 1, 
+            "n_scenes": 12, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
             "future_window": 15, 
-            "batch_size": 16, 
+            "batch_size": 64, 
             "resize": [224, 224, 3],
             "shuffle": true, 
-            "n_workers": 4, 
-            "prefetch_factor": 8
+            "n_workers": 8, 
+            "prefetch_factor": 2
         }
     },
     "validation_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/validation.tfrecord", 
-            "n_scenes": 1, 
+            "n_scenes": 12, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
             "future_window": 15, 
-            "batch_size": 16, 
+            "batch_size": 64, 
             "resize": [224, 224, 3],
             "shuffle": false, 
-            "n_workers": 4, 
-            "prefetch_factor": 8
+            "n_workers": 8, 
+            "prefetch_factor": 2
         }
     },
     "test_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/test.tfrecord", 
-            "n_scenes": 15, 
+            "n_scenes": 7, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
@@ -138,9 +137,9 @@
         }
     },
     "optimizer": {
-        "type": "SGD",
+        "type": "Adam",
         "args":{
-            "lr": 0.001
+            "lr": 0.002
         }
     },
     "loss": {
@@ -152,24 +151,20 @@
             "type": "VIM",
             "args": {
                 "name": "vim2d",
-                "img_size": 224,
-                "is_inp_abs": false,
-                "is_pose_norm": true
+                "img_size": 224
             } 
         }, 
         {
             "type": "VIM",
             "args": {
-                "name": "vim3d",
-                "is_inp_abs": false,
-                "is_pose_norm": false
+                "name": "vim3d"
             }
         }
     ],
     "lr_scheduler": {
         "type": "StepLR",
         "args": {
-            "step_size": 5,
+            "step_size": 7,
             "gamma": 0.85,
             "verbose": true
         }
@@ -178,17 +173,17 @@
         "type": "HPPW3DTrainer",
         "args": {},
 
-        "epochs": 20,
+        "epochs": 40,
         "save_dir": "/notebooks/saved/",
         "save_period": 2,
         "eval_period": 1,
         "verbosity": 2,
-        "monitor": "min eval_loss",
+        "monitor": "min eval_loss2d",
         "early_stop": 4       
     },
-    "pose_norm": true,
+    "use_pose_norm": true,
     "use_root_relative": true,
     "tensorboard": false,
-    "wandb": false
+    "wandb": true
 
 }

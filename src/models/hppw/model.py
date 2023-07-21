@@ -39,6 +39,9 @@ class HumanPosePredictorModel(nn.Module):
         self.pose_encoder = PoseEncoder(**self.pose_spatial_encoder_args)
         self.image_encoder = VisionTransformer(**self.image_spatial_encoder_args)
         
+        for param in self.image_encoder.parameters():
+            param.requires_grad = False
+
         self.im_temporal_encoder = TemporalEncoder(**self.im_temporal_encoder_args)
         self.pose_temporal_encoder = TemporalEncoder(**self.pose_temporal_encoder_args)
         

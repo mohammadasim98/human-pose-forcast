@@ -6,18 +6,13 @@ from models.hppw.transforms import cvt_absolute_pose
 
 class VIM:
     
-    def __init__(self, name, img_size: int=224, is_inp_abs: bool=False, is_pose_norm: bool=False):
+    def __init__(self, name, img_size: int=224):
         self.img_size = img_size
-        self.is_inp_abs = is_inp_abs
         self.name = name
         
-    def compute(self, prediction, future):
-        
-        if is_pose_norm:
-            future = future * self.img_size
-            prediction = prediction * self.img_size
+    def compute(self, prediction, future, is_pose_norm: bool=False, is_root_relative: bool=False):
                 
-        if not self.is_inp_abs:
+        if is_root_relative:
             root_joints_gt = future[..., 0, :]
             root_joints_pred = prediction[..., 0, :]
             
@@ -34,6 +29,9 @@ class VIM:
         sum_per_joint = torch.sum((gt - pred) ** 2, dim=-1)
         norm_per_joint = torch.sqrt(sum_per_joint)
         mean = torch.mean(norm_per_joint)
+        
+        if is_pose_norm:
+            mean *= self.img_size
         
         return mean
     
