@@ -14,7 +14,10 @@ import models.hppw as module_loss
 from models.hppw.transforms import cvt_relative_pose
 from models.projection.model import LinearProjection
 
+def _generate_key_padding_mask(poses: torch.Tensor) -> torch.Tensor:
+    mask = torch.where(poses==0.0, 1.0, 0.0)
 
+    return torch.sum(mask, dim=-1).bool()
 
 class HPPW3DTrainer(BaseTrainer):
 
@@ -88,18 +91,14 @@ class HPPW3DTrainer(BaseTrainer):
             history_pose3d_seq = history[4][:, -self.history_window:, ...].to(self._device)
             history_trans_seq = history[5][:, -self.history_window:, ...].to(self._device)
             
+            history_pose2d_mask = _generate_key_padding_mask(history_pose2d_seq)
+            history_root_mask = _generate_key_padding_mask(history_root_seq)
+            
             future_pose2d_seq = future[0][:, :self.future_window, ...].float().to(self._device)
             future_root_seq = future[1][:, :self.future_window, ...].float().to(self._device)
             future_pose3d_seq = future[2][:, :self.future_window, ...].to(self._device)
             future_trans_seq = future[3][:, :self.future_window, ...].to(self._device)
             
-            if self.use_root_relative:
-                history_pose2d_seq = cvt_relative_pose(history_root_seq, history_pose2d_seq)
-                history_pose3d_seq = cvt_relative_pose(history_trans_seq, history_pose3d_seq)
-                
-                future_pose2d_seq = cvt_relative_pose(future_root_seq, future_pose2d_seq)
-                future_pose3d_seq = cvt_relative_pose(future_trans_seq, future_pose3d_seq)
-        
             if self.use_pose_norm:
                 history_pose2d_seq /= img_seq.shape[3]
                 history_root_seq /= img_seq.shape[3]
@@ -107,27 +106,35 @@ class HPPW3DTrainer(BaseTrainer):
                 future_pose2d_seq /= img_seq.shape[3]
                 future_root_seq /= img_seq.shape[3]
             
-            self.optimizer.zero_grad()
-
-            output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask)
-            
             if self.use_root_relative:
+                history_pose2d_seq = cvt_relative_pose(history_root_seq, history_pose2d_seq)
+                history_pose3d_seq = cvt_relative_pose(history_trans_seq, history_pose3d_seq)
+                
+                future_pose2d_seq = cvt_relative_pose(future_root_seq, future_pose2d_seq)
+                future_pose3d_seq = cvt_relative_pose(future_trans_seq, future_pose3d_seq)
+                
                 future_poses2d = torch.cat([future_root_seq.unsqueeze(2), future_pose2d_seq], dim=2)
                 history_poses2d = torch.cat([history_root_seq.unsqueeze(2), history_pose2d_seq], dim=2)
                 
                 history_poses3d = torch.cat([history_trans_seq.unsqueeze(2), history_pose3d_seq], dim=2)  
                 future_poses3d = torch.cat([future_trans_seq.unsqueeze(2), future_pose3d_seq], dim=2)  
                 
+                history_pose_mask =  torch.cat([history_root_mask.unsqueeze(-1), history_pose2d_mask], dim=-1)
+
+                
             else:
                 future_poses2d = future_pose2d_seq
                 history_poses2d = history_pose2d_seq   
                 history_poses3d = history_pose3d_seq  
                 future_poses3d = future_poses3d  
+                history_pose_mask = history_pose2d_mask
                 
-            
+            self.optimizer.zero_grad()
+
+            output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask)                
             
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
-            loss_2d = self.criterion(output2d, future_poses2d)
+            loss_2d = self.criterion(output2d, future_poses2d, history_pose_mask)
             loss = loss_2d
 
             if self.use_projection:
@@ -215,18 +222,14 @@ class HPPW3DTrainer(BaseTrainer):
             history_pose3d_seq = history[4][:, -self.history_window:, ...].to(self._device)
             history_trans_seq = history[5][:, -self.history_window:, ...].to(self._device)
             
+            history_pose2d_mask = _generate_key_padding_mask(history_pose2d_seq)
+            history_root_mask = _generate_key_padding_mask(history_root_seq)
+            
             future_pose2d_seq = future[0][:, :self.future_window, ...].float().to(self._device)
             future_root_seq = future[1][:, :self.future_window, ...].float().to(self._device)
             future_pose3d_seq = future[2][:, :self.future_window, ...].to(self._device)
             future_trans_seq = future[3][:, :self.future_window, ...].to(self._device)
             
-            if self.use_root_relative:
-                history_pose2d_seq = cvt_relative_pose(history_root_seq, history_pose2d_seq)
-                history_pose3d_seq = cvt_relative_pose(history_trans_seq, history_pose3d_seq)
-                
-                future_pose2d_seq = cvt_relative_pose(future_root_seq, future_pose2d_seq)
-                future_pose3d_seq = cvt_relative_pose(future_trans_seq, future_pose3d_seq)
-
             if self.use_pose_norm:
                 history_pose2d_seq /= img_seq.shape[3]
                 history_root_seq /= img_seq.shape[3]
@@ -234,22 +237,33 @@ class HPPW3DTrainer(BaseTrainer):
                 future_pose2d_seq /= img_seq.shape[3]
                 future_root_seq /= img_seq.shape[3]
             
-            output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask)
-            
             if self.use_root_relative:
+                history_pose2d_seq = cvt_relative_pose(history_root_seq, history_pose2d_seq)
+                history_pose3d_seq = cvt_relative_pose(history_trans_seq, history_pose3d_seq)
+                
+                future_pose2d_seq = cvt_relative_pose(future_root_seq, future_pose2d_seq)
+                future_pose3d_seq = cvt_relative_pose(future_trans_seq, future_pose3d_seq)
+                
                 future_poses2d = torch.cat([future_root_seq.unsqueeze(2), future_pose2d_seq], dim=2)
                 history_poses2d = torch.cat([history_root_seq.unsqueeze(2), history_pose2d_seq], dim=2)
+                
                 history_poses3d = torch.cat([history_trans_seq.unsqueeze(2), history_pose3d_seq], dim=2)  
                 future_poses3d = torch.cat([future_trans_seq.unsqueeze(2), future_pose3d_seq], dim=2)  
+                
+                history_pose_mask =  torch.cat([history_root_mask.unsqueeze(-1), history_pose2d_mask], dim=-1)
                 
             else:
                 future_poses2d = future_pose2d_seq
                 history_poses2d = history_pose2d_seq   
                 history_poses3d = history_pose3d_seq  
-                future_poses3d = future_poses3d   
+                future_poses3d = future_poses3d 
+                
+                history_pose_mask = history_pose2d_mask
+            
+            output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask)
             
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
-            loss_2d = self.criterion(output2d, future_poses2d)
+            loss_2d = self.criterion(output2d, future_poses2d, history_pose_mask)
 
             
             if self.use_projection:

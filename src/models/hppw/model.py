@@ -63,7 +63,7 @@ class HumanPosePredictorModel(nn.Module):
         self.device = device
 
     
-    def pose_encoding(self, relative_poses, root_joints, history_window, unroll: bool=False):
+    def pose_encoding(self, relative_poses, root_joints, history_window, unroll: bool=False, pose_mask: Union[torch.Tensor, None]=None):
         """ Perform spatial and temporal attention on poses
 
         Args:
@@ -88,8 +88,12 @@ class HumanPosePredictorModel(nn.Module):
             
             relative_poses = self.embed_relative_pose(relative_poses)
             root_joints = self.embed_root(root_joints)
+            
+            if pose_mask is not None:
+                pose_mask = pose_mask.view(-1, num_joints+1)
+
             # Out Shape: (batch_size*sequence_length, num_joints, E) and (batch_size*sequence_length, E)
-            memory_local, memory_global = self.pose_encoder(root_joints=root_joints, relative_poses=relative_poses)
+            memory_local, memory_global = self.pose_encoder(root_joints=root_joints, relative_poses=relative_poses, pose_mask=pose_mask)
             
             # Out Shape: (batch_size, sequence_length, num_joints, E) and (batch_size, sequence_length, E)
             memory_local = memory_local.view(-1, sequence_length, num_joints, self.pose_emb_dim)
@@ -101,7 +105,7 @@ class HumanPosePredictorModel(nn.Module):
             for i in range(sequence_length):
                 relative_poses = self.embed_relative_pose(relative_poses[:, i, ...])
                 root_joints = self.embed_root(root_joints[:, i, ...])
-                mem_local, mem_global = self.pose_encoder(root_joints=root_joints, relative_poses=relative_poses)
+                mem_local, mem_global = self.pose_encoder(root_joints=root_joints, relative_poses=relative_poses, pose_mask=pose_mask[:, i, ...] if pose_mask is not None else None)
                 memory_local.append(mem_local.unsqueeze(1))
                 memory_global.append(mem_global.unsqueeze(1))
                 
@@ -184,7 +188,14 @@ class HumanPosePredictorModel(nn.Module):
         # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
         return torch.cat([memory_local, memory_global], dim=1), attention_weights
         
-    def forward(self, img_seq: torch.Tensor, relative_pose_seq: torch.Tensor, root_joint_seq: torch.Tensor, mask: Union[torch.Tensor, None]):
+    def forward(
+        self, 
+        img_seq: torch.Tensor, 
+        relative_pose_seq: torch.Tensor, 
+        root_joint_seq: torch.Tensor, 
+        mask: Union[torch.Tensor, None]=None,
+        pose_mask: Union[torch.Tensor, None]=None
+        ):
         """Perform forward pass
 
         Args:
@@ -226,7 +237,13 @@ class HumanPosePredictorModel(nn.Module):
         memory_img, image_attentions = self.image_encoding(img_seq=img_seq, mask=mask, unroll=self.unroll)
         
         # Get combined* local and global features from sequences of poses
-        memory_poses, tgt_poses, pose_attentions = self.pose_encoding(relative_poses=relative_pose_seq, root_joints=root_joint_seq, history_window=history_window, unroll=self.unroll)
+        memory_poses, tgt_poses, pose_attentions = self.pose_encoding(
+            relative_poses=relative_pose_seq, 
+            root_joints=root_joint_seq, 
+            history_window=history_window, 
+            unroll=self.unroll,
+            pose_mask=pose_mask
+            )
         
         # Autoregressive decoder with "dual" conditioning
         # Currently uses only combined local and global features. Need to modify it later for further evaluation.

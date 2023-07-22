@@ -1,6 +1,7 @@
 
 
 import torch
+from typing import Union
 
 from models.hppw.transforms import cvt_absolute_pose
 
@@ -10,7 +11,7 @@ class VIM:
         self.img_size = img_size
         self.name = name
         
-    def compute(self, prediction, future, is_pose_norm: bool=False, is_root_relative: bool=False):
+    def compute(self, prediction, future, is_pose_norm: bool=False, is_root_relative: bool=False, mask: Union[torch.Tensor, None]=None):
                 
         if is_root_relative:
             root_joints_gt = future[..., 0, :]
@@ -25,10 +26,27 @@ class VIM:
         else:
             pred = prediction
             gt = future
-            
+        
         sum_per_joint = torch.sum((gt - pred) ** 2, dim=-1)
-        norm_per_joint = torch.sqrt(sum_per_joint)
-        mean = torch.mean(norm_per_joint)
+
+        if mask is not None:
+            # (batch, seq, num_joint+1)
+            inv_mask = ~mask
+            
+            # (batch, seq)
+            denom = torch.sum(mask, -1)
+        
+            # (batch, seq, num_joint+1) -> # (batch, seq, num_joint+1)
+            norm_per_joint = torch.sqrt(sum_per_joint) * inv_mask
+            
+            # (batch, seq, num_joint+1) -> # (batch, seq)
+            per_pose_mean = torch.sum(norm_per_joint, dim=-1) / denom
+        
+        else:
+            norm_per_joint = torch.sqrt(sum_per_joint)
+            per_pose_mean = torch.mean(norm_per_joint, dim=-1)
+
+        mean = torch.mean(per_pose_mean)
         
         if is_pose_norm:
             mean *= self.img_size

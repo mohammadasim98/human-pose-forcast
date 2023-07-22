@@ -1,6 +1,6 @@
 
 import torch
-
+from typing import Union
 # def cvt_root_relative(root_joint: torch.Tensor, pose: torch.Tensor, eps: float=1e-3):
 #     """Convert absolute pose to root relative pose given a root joint.
 #                               (abs_pose - root)
@@ -18,11 +18,28 @@ import torch
 #     root_joint = torch.tile(root_joint, (1, 1, pose.shape[2], 1))
 #     return (pose - root_joint) / (root_joint+pose+eps)
 
-def mpjpe(pred, future):
+def mpjpe(pred, future, mask: Union[torch.Tensor, None]=None):
 
+    # (batch, seq, num_joint+1, 3) -> # (batch, seq, num_joint+1)
     sum_per_joint = torch.sum((future - pred) ** 2, dim=-1)
-    sum_per_pose = torch.sqrt(sum_per_joint)
-    mean = torch.mean(sum_per_pose)
+
+    if mask is not None:
+        # (batch, seq, num_joint+1)
+        inv_mask = ~mask
+        inv_mask = inv_mask.float()
+        # (batch, seq)
+        denom = torch.sum(inv_mask, -1)
+        # (batch, seq, num_joint+1) -> # (batch, seq, num_joint+1)
+        norm_per_joint = torch.sqrt(sum_per_joint) * inv_mask
+        
+        # (batch, seq, num_joint+1) -> # (batch, seq)
+        per_pose_mean = torch.sum(norm_per_joint, dim=-1) / (denom + 1e-6)
+    
+    else:
+        norm_per_joint = torch.sqrt(sum_per_joint)
+        per_pose_mean = torch.mean(norm_per_joint, dim=-1)
+        
+    mean = torch.mean(per_pose_mean)
 
     return mean
 

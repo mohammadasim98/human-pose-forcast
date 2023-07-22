@@ -5,7 +5,7 @@ from typing import Union
 from functools import partial
 
 from models.vit.mlp import MLPBlock 
-
+from models.common.sequential import PoseMultiInputSequential, MultiInputSequential
 # class PoseEncoderBlock(nn.Module):
 #     """ Encode a pose keypoint sequence embeddings via Spatial
 #         Self-Attention
@@ -66,6 +66,7 @@ from models.vit.mlp import MLPBlock
 
 #         return result
 
+
 class PoseEncoderBlock(nn.Module):
     """ Encode a pose keypoint sequence embeddings via Spatial
         Self-Attention
@@ -94,10 +95,9 @@ class PoseEncoderBlock(nn.Module):
 
         self.need_weights = need_weights 
         
-    def _generate_key_padding_mask(self, relative_poses: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
 
-    def forward(self, pose: torch.Tensor):
+
+    def forward(self, pose: torch.Tensor, pose_mask: Union[torch.Tensor, None]=None):
         """Perform forward pass
 
         Args:
@@ -112,11 +112,10 @@ class PoseEncoderBlock(nn.Module):
         torch._assert(pose.dim() == 3, f"Expected (batch_size*sequence_length, num_joints+1, E) or (batch_size, num_joints+1, E) got {pose.shape}")
         
         _, num_joints, hidden_dim = pose.shape
-        key_padding_mask = None
         result = None
         attention_weights = None 
         x0 = self.ln_1(pose)
-        x1, attention_weights = self.self_attention(x0, x0, x0, key_padding_mask=key_padding_mask, need_weights=self.need_weights)
+        x1, attention_weights = self.self_attention(x0, x0, x0, need_weights=self.need_weights, key_padding_mask=pose_mask)
         x2 = pose + x1
         x3 = self.ln_2(x2)
         x4 = self.mlp(x3)
@@ -148,9 +147,9 @@ class PoseEncoder(nn.Module):
         for i in range(num_layers):
             layers.append(PoseEncoderBlock(num_heads, hidden_dim, mlp_dim, norm_layer, dropout, need_weights))
         
-        self.layers = nn.Sequential(*layers)
+        self.layers = PoseMultiInputSequential(*layers)
         
-    def forward(self, root_joints: torch.Tensor, relative_poses: torch.Tensor):
+    def forward(self, root_joints: torch.Tensor, relative_poses: torch.Tensor, pose_mask: Union[torch.Tensor, None]=None):
         """Perform forward pass
 
         Args:
@@ -165,9 +164,10 @@ class PoseEncoder(nn.Module):
         torch._assert(relative_poses.dim() == 3, f"Expected (batch_size*sequence_length, num_joints, E) or (batch_size, num_joints, E) got {relative_poses.shape}")
         torch._assert(root_joints.dim() == 2, f"Expected (batch_size*sequence_length, num_joints, E) or (batch_size, num_joints, E) got {root_joints.shape}")        
         
+        
         input = torch.cat([root_joints.unsqueeze(1), relative_poses], dim=1)
 
-        result = self.layers(input)
+        result = self.layers(input, pose_mask)
         
         return result[:, 1:, ...], result[:, 0, ...]
 
