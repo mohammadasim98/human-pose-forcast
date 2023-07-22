@@ -124,28 +124,28 @@
         "type": "ThreeDPWTFRecordDataset",
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/test.tfrecord", 
-            "n_scenes": 7, 
+            "n_scenes": 24, 
             "person_id": 0, 
             "subsample": 1, 
             "history_window": 15, 
             "future_window": 15, 
-            "batch_size": 1, 
+            "batch_size": 32, 
             "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 8, 
-            "prefetch_factor": 32
+            "prefetch_factor": 2
         }
     },
     "curriculum": {
-        "history_windows": 1,
-        "future_windows": 1,
+        "history_window": 1,
+        "future_window": 1,
         "step": 2,
-        "duration": 2
+        "duration": 3
     },
     "optimizer": {
-        "type": "SGD",
+        "type": "Adam",
         "args":{
-            "lr": 0.01
+            "lr": 0.0001
         }
     },
     "loss": {
@@ -174,13 +174,13 @@
         "type": "HPPW3DTrainer",
         "args": {},
 
-        "epochs": 40,
+        "epochs": 70,
         "save_dir": "/notebooks/saved/",
         "save_period": 2,
         "eval_period": 1,
         "verbosity": 2,
         "monitor": "min eval_loss2d",
-        "early_stop": 6       
+        "early_stop": 8       
     },
     "use_pose_norm": true,
     "use_root_relative": true,

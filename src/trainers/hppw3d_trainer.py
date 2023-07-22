@@ -53,8 +53,8 @@ class HPPW3DTrainer(BaseTrainer):
         self.log_step = 100 # arbitrary
         # Prepare Metrics
         self.metric_ftns = [getattr(module_metric, met['type'])(**met['args']) for met in config['metrics']]
-        self.epoch_metrics = MetricTracker(keys=['loss2d', 'loss3d'] + [str(m) for m in self.metric_ftns], writer=self.writer)
-        self.eval_metrics = MetricTracker(keys=['loss2d', 'loss3d'] + [str(m) for m in self.metric_ftns], writer=self.writer)
+        self.epoch_metrics = MetricTracker(keys=['loss2d'] + [str(m) for m in self.metric_ftns], writer=self.writer)
+        self.eval_metrics = MetricTracker(keys=['loss2d'] + [str(m) for m in self.metric_ftns], writer=self.writer)
 
         
     def _train_epoch(self):

@@ -93,6 +93,7 @@ class MetricTracker:
 
     def avg(self, key):
         return self.metrics_dict[key]['sum'] / self.metrics_dict[key]['count']
+        
 
     def result(self):
         return {key: self.avg(key) for key in self.metrics_dict}
