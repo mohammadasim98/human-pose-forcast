@@ -140,12 +140,12 @@
         "history_window": 1,
         "future_window": 1,
         "step": 2,
-        "duration": 3
+        "duration": 2
     },
     "optimizer": {
         "type": "Adam",
         "args":{
-            "lr": 0.0001
+            "lr": 0.000085
         }
     },
     "loss": {
