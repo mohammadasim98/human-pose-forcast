@@ -43,6 +43,113 @@ def mpjpe(pred, future, mask: Union[torch.Tensor, None]=None):
 
     return mean
 
+def mpjpev2(pred, future, mask: Union[torch.Tensor, None]=None):
+
+    # (batch, seq, num_joint+1, 3) -> # (batch, seq, num_joint+1)
+    sum_per_joint = torch.sum((future - pred) ** 2, dim=-1)
+
+    if mask is not None:
+        # (batch, seq, num_joint+1)
+        inv_mask = ~mask
+        inv_mask = inv_mask.float()
+        # (batch, seq)
+        denom = torch.sum(inv_mask, -1)
+        # (batch, seq, num_joint+1) -> # (batch, seq, num_joint+1)
+        norm_per_joint = sum_per_joint * inv_mask
+        
+        # (batch, seq, num_joint+1) -> # (batch, seq)
+        per_pose_mean = torch.sum(norm_per_joint, dim=-1) / (denom + 1e-6)
+    
+    else:
+        norm_per_joint = sum_per_joint
+        per_pose_mean = torch.mean(norm_per_joint, dim=-1)
+        
+    mean = torch.mean(per_pose_mean)
+
+    return mean
+
+def mpjpev3(pred, future, mask: Union[torch.Tensor, None]=None):
+
+    # (batch, seq, num_joint+1, 3) -> # (batch, seq, num_joint+1)
+    
+    root_pred = pred[..., 0, :]
+    root_gt = future[..., 0, :]
+    pose_pred = pred[..., 1:, :]
+    pose_gt = future[..., 1:, :]
+    
+    pose_norm = torch.sum((pose_gt - pose_pred) ** 2, dim=-1)
+    root_norm = torch.sum((root_gt - root_pred) ** 2, dim=-1)
+
+    
+    if mask is not None:
+        # (batch, seq, num_joint+1)
+        pose_mask = mask[..., 1:]
+        root_mask = mask[..., 0]
+        
+        inv_pose_mask = ~pose_mask
+        inv_root_mask = ~root_mask
+        
+        inv_pose_mask = inv_pose_mask.float()
+        inv_root_mask = inv_root_mask.float()
+        
+        # (batch, seq)
+        denom_pose = torch.sum(inv_pose_mask, -1)
+        
+        # (batch, seq, num_joint+1) -> # (batch, seq, num_joint+1)
+        pose_norm *= inv_pose_mask
+        root_norm *= inv_root_mask
+        
+        # (batch, seq, num_joint+1) -> # (batch, seq)
+        per_pose_mean = torch.sum(pose_norm, dim=-1) / (denom_pose + 1e-6)
+        
+    else:
+        per_pose_mean = torch.mean(pose_norm, dim=-1)
+        
+    mean = torch.mean(per_pose_mean + root_norm)
+
+    return mean
+
+def mpjpev4(pred, future, mask: Union[torch.Tensor, None]=None):
+
+    # (batch, seq, num_joint+1, 3) -> # (batch, seq, num_joint+1)
+    
+    root_pred = pred[..., 0, :]
+    root_gt = future[..., 0, :]
+    pose_pred = pred[..., 1:, :]
+    pose_gt = future[..., 1:, :]
+    
+    pose_norm = torch.sqrt(torch.sum((pose_gt - pose_pred) ** 2, dim=-1))
+    root_norm = torch.sum((root_gt - root_pred) ** 2, dim=-1)
+
+    
+    if mask is not None:
+        # (batch, seq, num_joint+1)
+        pose_mask = mask[..., 1:]
+        root_mask = mask[..., 0]
+        
+        inv_pose_mask = ~pose_mask
+        inv_root_mask = ~root_mask
+        
+        inv_pose_mask = inv_pose_mask.float()
+        inv_root_mask = inv_root_mask.float()
+        
+        # (batch, seq)
+        denom_pose = torch.sum(inv_pose_mask, -1)
+        
+        # (batch, seq, num_joint+1) -> # (batch, seq, num_joint+1)
+        pose_norm *= inv_pose_mask
+        root_norm *= inv_root_mask
+        
+        # (batch, seq, num_joint+1) -> # (batch, seq)
+        per_pose_mean = torch.sum(pose_norm, dim=-1) / (denom_pose + 1e-6)
+        
+    else:
+        per_pose_mean = torch.mean(pose_norm, dim=-1)
+        
+    mean = torch.mean(per_pose_mean + root_norm)
+
+    return mean
+
 def modified_mpjpe(pred, future):
     
     root_pred = pred[..., 0, :]

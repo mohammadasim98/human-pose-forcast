@@ -78,9 +78,10 @@ class BaseTrainer:
         self._device, self._device_ids = prepare_device(config['n_gpu'])
         self.wandb_enabled = config['wandb']
         if self.wandb_enabled:
-            wandb.login()
-            wandb.init(project="human-pose-prediction-in-the-wild")
+            self.wandb = wandb
 
+            self.wandb.login()
+            self.wandb.init(project="human-pose-prediction-in-the-wild")
     
 
     @abstractmethod
@@ -104,8 +105,18 @@ class BaseTrainer:
         for epoch in range(self.start_epoch, self.epochs + 1):
             
             if epoch % self.curriculum["duration"] == 0:
+                
                 self.future_window += self.curriculum["step"]
                 self.history_window += self.curriculum["step"]
+                
+                if self.history_window > self.max_history_window:
+                    self.history_window = self.max_history_window
+                
+                if  self.future_window > self.max_future_window:
+                    self.future_window = self.max_future_window
+                
+                self.logger.info(f"Setting curriculum to history window: {self.history_window}, future window: {self.future_window}") 
+
             
             self.current_epoch = epoch
             train_result = self._train_epoch()
@@ -117,14 +128,14 @@ class BaseTrainer:
             log.update(train_result)
 
             if self._do_evaluate():
-                eval_result = self.evaluate()
+                eval_result = self.evaluate(history_window=self.history_window, future_window=self.future_window)
                 states["loss2d"]["val"].append(eval_result["loss2d"])
                 if self.use_projection:
                     states["loss3d"]["val"].append(eval_result["loss3d"])
                 # save eval information to the log dict as well
                 log.update({f'eval_{key}': value for key, value in eval_result.items()})
-                if self.wandb_enabled:
-                    wandb.log(log)
+            if self.wandb_enabled:
+                self.wandb.log(log)
 
 
 

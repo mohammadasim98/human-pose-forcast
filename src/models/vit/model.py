@@ -170,6 +170,7 @@ class VisionTransformer(nn.Module):
         # TODO: Need to call the new head on all outputs including cls
         # ... 
         # ...
+    
         
         local_feat = results # (B, 197, 768)
         if self.global_pool == "avg":
@@ -178,7 +179,7 @@ class VisionTransformer(nn.Module):
         elif self.global_pool == "max":
             global_feat = torch.max(results, dim=1) # (B, 768)
             
-        return local_feat, global_feat
+        return local_feat, global_feat, key_padding_mask
 
     
     def visualize_cls(self, attention_weights, n_h, n_w):

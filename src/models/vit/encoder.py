@@ -6,7 +6,7 @@ from functools import partial
 from collections import OrderedDict
 
 from models.vit.mlp import MLPBlock 
-from models.vit.sequential import MultiInputSequential
+from models.common.sequential import VisionMultiInputSequential
 
 class EncoderBlock(nn.Module):
     """ Generic Transformer encoder block.
@@ -85,7 +85,7 @@ class Encoder(nn.Module):
         
 
             
-        self.layers = MultiInputSequential(layers)
+        self.layers = VisionMultiInputSequential(layers)
         
         # final layer norm
         self.ln = norm_layer(hidden_dim) 

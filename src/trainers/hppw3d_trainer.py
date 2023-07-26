@@ -1,18 +1,26 @@
 import os
+import numpy as np
 import torch
 import torch.nn as nn
-
+from copy import deepcopy
 from tqdm import tqdm
 
 from torchvision.utils import make_grid
-from trainers.base3d import BaseTrainer
-from utils.io import MetricTracker
+
 
 import models.hppw as module_arch
 import models.hppw as module_metric
 import models.hppw as module_loss
-from models.hppw.transforms import cvt_relative_pose
+from models.hppw.transforms import cvt_relative_pose, cvt_absolute_pose
 from models.projection.model import LinearProjection
+from models.embedding.dct import get_dct_matrix
+
+from trainers.base3d import BaseTrainer
+
+from utils.io import MetricTracker
+from utils.viz import annotate_pose_2d, annotate_root_2d
+
+
 
 def _generate_key_padding_mask(poses: torch.Tensor) -> torch.Tensor:
     mask = torch.where(poses==0.0, 1.0, 0.0)
@@ -39,7 +47,9 @@ class HPPW3DTrainer(BaseTrainer):
         self.use_root_relative = config["use_root_relative"]
         self.use_pose_norm = config["use_pose_norm"]
         self.use_projection = config["use_projection"]
+        self.use_dct = config["use_dct"]
         self.curriculum = config["curriculum"]
+        self.qsample = config["qsample"]
         # Prepare Losses
         # self.criterion = getattr(module_loss, config['loss'])
         self.criterion = getattr(module_loss, config['loss']["type"])
@@ -58,7 +68,81 @@ class HPPW3DTrainer(BaseTrainer):
         self.metric_ftns = [getattr(module_metric, met['type'])(**met['args']) for met in config['metrics']]
         self.epoch_metrics = MetricTracker(keys=['loss2d'] + [str(m) for m in self.metric_ftns], writer=self.writer)
         self.eval_metrics = MetricTracker(keys=['loss2d'] + [str(m) for m in self.metric_ftns], writer=self.writer)
+        
+        self.history_window = self.curriculum["history_window"]
+        self.max_history_window = self.curriculum["max_history_window"]
+        self.future_window = self.curriculum["future_window"]
+        self.max_future_window = self.curriculum["max_future_window"]
+        
+        self.qbatch_index = self.qsample["batch_index"]
+        self.qsequence_index = self.qsample["sequence_index"]
+        self.qperiod = self.qsample["period"]
+        
+    def send_imgs(self, history, future, output2d, qsequence_index, batch_idx):
 
+
+        imgs = history[0][qsequence_index, -self.history_window:, ...].cpu().numpy()
+
+        # (1, S, N, 2)
+        hist_pose2d = history[1][qsequence_index, -self.history_window:, ...].unsqueeze(0).cpu().numpy()
+        hist_root2d = history[2][qsequence_index, -self.history_window:, ...].unsqueeze(0).cpu().numpy()
+        gt_pose2d = future[0][qsequence_index, :self.future_window, ...].unsqueeze(0).cpu().numpy()
+        gt_root2d = future[1][qsequence_index, :self.future_window, ...].unsqueeze(0).cpu().numpy()
+
+        root2d = None
+        # (1, S, N, 2) or (S, N+1, 2)
+        pred2d = output2d[qsequence_index, ...].unsqueeze(0)
+
+        if self.use_pose_norm:
+            pred2d *= imgs.shape[2]
+
+        if self.use_root_relative:
+            # (1, S, 2)
+            root2d = pred2d[..., 0, :]
+            # (1, S, N+1, 2)
+            pred2d = cvt_absolute_pose(root2d, pred2d[..., 1:, :])
+
+
+        if root2d is not None:
+            root2d = root2d.cpu().numpy()
+        pred2d = pred2d.cpu().numpy()
+        # abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
+
+        # cv2.imshow("History Image", img)
+        # cv2.imshow("History Mask", mask*255)
+
+        imgs_list = []
+
+        for j in range(hist_pose2d.shape[1]-1):
+            annotated_img = annotate_pose_2d(img=imgs[j, ...], pose=hist_pose2d[:, j, ...], color=(255, 0, 0), radius=2, thickness=2, text=False)
+            annotated_img = annotate_root_2d(img=annotated_img, root=hist_root2d[:, j, ...], color=(0, 0, 255), thickness=3)
+
+            imgs_list.append(self.wandb.Image(annotated_img.astype(np.uint8)[..., ::-1]))
+
+
+
+        for j in range(pred2d.shape[1]):
+            curr_img = deepcopy(imgs[-1, ...])
+
+            gt_abs_pose = gt_pose2d[:, j, ...]
+            gt_root_joint = gt_root2d[:, j, ...]
+
+            pred_abs = pred2d[:, j, ...].astype(np.uint8)
+
+            # abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
+            annotated_img = annotate_pose_2d(img=curr_img, pose=pred_abs, color=(225, 225, 0), radius=2, thickness=2, text=False)
+            if root2d is not None:
+                pred_root = root2d[:, j, ...].astype(np.uint8)
+                annotated_img = annotate_root_2d(img=annotated_img, root=pred_root, color=(255, 0, 255), thickness=3)
+
+            annotated_img = annotate_pose_2d(img=annotated_img, pose=gt_abs_pose, color=(0, 255, 0), radius=2, thickness=2, text=False)
+            annotated_img = annotate_root_2d(img=annotated_img,root=gt_root_joint, color=(0, 255, 255), thickness=3)
+            # cv2.imwrite(ospj(folder_path, str(i)+".jpg"), annoted_img)
+
+            imgs_list.append(self.wandb.Image(annotated_img.astype(np.uint8)[..., ::-1]))
+
+
+        self.wandb.log({f"images_{qsequence_index}_{batch_idx}": imgs_list})
         
     def _train_epoch(self):
         """
@@ -73,16 +157,11 @@ class HPPW3DTrainer(BaseTrainer):
         self.epoch_metrics.reset()
         self.logger.debug(f"==> Start Training Epoch {self.current_epoch}/{self.epochs}, lr={self.optimizer.param_groups[0]['lr']:.6f} ")
         loss3d = None
-        self.history_window = self.curriculum["history_window"]
-        self.future_window = self.curriculum["future_window"]
-        
+
+
         pbar = tqdm(total=len(self._train_loader) * self._train_loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
         for batch_idx, (history, future) in enumerate(self._train_loader):
-            if self.history_window > history[0].shape[1]:
-                history_window = history[0].shape[1]
-                
-            if self.future_window > future[0].shape[1]:
-                history_window = future[0].shape[1]
+
 
             img_seq = history[0][:, -self.history_window:, ...].float().to(self._device)
             history_pose2d_seq = history[1][:, -self.history_window:, ...].float().to(self._device)
@@ -98,6 +177,9 @@ class HPPW3DTrainer(BaseTrainer):
             future_root_seq = future[1][:, :self.future_window, ...].float().to(self._device)
             future_pose3d_seq = future[2][:, :self.future_window, ...].to(self._device)
             future_trans_seq = future[3][:, :self.future_window, ...].to(self._device)
+            
+            future_pose2d_mask = _generate_key_padding_mask(future_pose2d_seq)
+            future_root_mask = _generate_key_padding_mask(future_root_seq)
             
             if self.use_pose_norm:
                 history_pose2d_seq /= img_seq.shape[3]
@@ -120,6 +202,7 @@ class HPPW3DTrainer(BaseTrainer):
                 future_poses3d = torch.cat([future_trans_seq.unsqueeze(2), future_pose3d_seq], dim=2)  
                 
                 history_pose_mask =  torch.cat([history_root_mask.unsqueeze(-1), history_pose2d_mask], dim=-1)
+                future_pose_mask =  torch.cat([future_root_mask.unsqueeze(-1), future_pose2d_mask], dim=-1)
 
                 
             else:
@@ -128,13 +211,19 @@ class HPPW3DTrainer(BaseTrainer):
                 history_poses3d = history_pose3d_seq  
                 future_poses3d = future_poses3d  
                 history_pose_mask = history_pose2d_mask
+                future_pose_mask = future_pose2d_mask
                 
             self.optimizer.zero_grad()
-
-            output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask)                
             
+            
+#             if self.use_dct:
+#                 dct_m, idct_m = get_dct_matrix(history_poses2d.shape[1])
+                
+#                 history_poses2d = torch.matmul(dct_m[:dct_n, :], history_poses2d.permute())
+            output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask, history_pose_mask, self.future_window)                
+
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
-            loss_2d = self.criterion(output2d, future_poses2d, history_pose_mask)
+            loss_2d = self.criterion(output2d, future_poses2d, future_pose_mask)
             loss = loss_2d
 
             if self.use_projection:
@@ -188,7 +277,7 @@ class HPPW3DTrainer(BaseTrainer):
         return log_dict
     
     @torch.no_grad()
-    def evaluate(self, loader=None):
+    def evaluate(self, loader=None, history_window=None, future_window=None):
         """
         Evaluate the model on the val_loader given at initialization
 
@@ -206,14 +295,15 @@ class HPPW3DTrainer(BaseTrainer):
         self.logger.debug(f"++> Evaluate at epoch {self.current_epoch} ...")
 
         pbar = tqdm(total=len(loader) * loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
-
-        for batch_idx, (history, future) in enumerate(loader): 
+        
+        if history_window is not None:
+            self.history_window = history_window
             
-            if self.history_window > history[0].shape[1]:
-                history_window = history[0].shape[1]
-                
-            if self.future_window > future[0].shape[1]:
-                history_window = future[0].shape[1]
+        if future_window is not None:
+            self.future_window = future_window
+            
+        for batch_idx, (history, future) in enumerate(loader): 
+
 
             img_seq = history[0][:, -self.history_window:, ...].float().to(self._device)
             history_pose2d_seq = history[1][:, -self.history_window:, ...].float().to(self._device)
@@ -229,6 +319,9 @@ class HPPW3DTrainer(BaseTrainer):
             future_root_seq = future[1][:, :self.future_window, ...].float().to(self._device)
             future_pose3d_seq = future[2][:, :self.future_window, ...].to(self._device)
             future_trans_seq = future[3][:, :self.future_window, ...].to(self._device)
+            
+            future_pose2d_mask = _generate_key_padding_mask(future_pose2d_seq)
+            future_root_mask = _generate_key_padding_mask(future_root_seq)
             
             if self.use_pose_norm:
                 history_pose2d_seq /= img_seq.shape[3]
@@ -251,19 +344,20 @@ class HPPW3DTrainer(BaseTrainer):
                 future_poses3d = torch.cat([future_trans_seq.unsqueeze(2), future_pose3d_seq], dim=2)  
                 
                 history_pose_mask =  torch.cat([history_root_mask.unsqueeze(-1), history_pose2d_mask], dim=-1)
+                future_pose_mask =  torch.cat([future_root_mask.unsqueeze(-1), future_pose2d_mask], dim=-1)
+
                 
             else:
                 future_poses2d = future_pose2d_seq
                 history_poses2d = history_pose2d_seq   
                 history_poses3d = history_pose3d_seq  
-                future_poses3d = future_poses3d 
-                
+                future_poses3d = future_poses3d  
                 history_pose_mask = history_pose2d_mask
+                future_pose_mask = future_pose2d_mask
             
-            output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask)
-            
+            output2d, _ = self.model(img_seq, history_pose2d_seq, history_root_seq, history_mask, history_pose_mask, self.future_window)                
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
-            loss_2d = self.criterion(output2d, future_poses2d, history_pose_mask)
+            loss_2d = self.criterion(output2d, future_poses2d, future_pose_mask)
 
             
             if self.use_projection:
@@ -295,6 +389,14 @@ class HPPW3DTrainer(BaseTrainer):
                 pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f}")
             # if self.writer is not None: self.writer.add_image('input_valid', make_grid(history.cpu(), nrow=8, normalize=True))
             pbar.update(loader.batch_size)
+            
+            if self.wandb_enabled:
+
+                if self.current_epoch % self.qperiod == 0:
+                    for qsequence_index in self.qsequence_index:
+                        for index in self.qbatch_index:
+                            if index == batch_idx:
+                                self.send_imgs(history, future, output2d, qsequence_index, index)
                 
         # add histogram of model parameters to the tensorboard
         '''

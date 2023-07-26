@@ -67,3 +67,17 @@ class InverseDiscreteCosineTransformEmbedding(nn.Module):
         out = out.permute(0, 3, 2, 1)
 
         return out
+    
+    
+def get_dct_matrix(self, N):
+    dct_m = np.eye(N)
+    for k in np.arange(N):
+        for i in np.arange(N):
+            w = np.sqrt(2 / N)
+            if k == 0:
+                w = np.sqrt(1 / N)
+            dct_m[k, i] = w * np.cos(np.pi * (i + 1 / 2) * k / N)
+    idct_m = np.linalg.inv(dct_m)
+    return dct_m, idct_m
+        
+        

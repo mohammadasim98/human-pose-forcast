@@ -24,7 +24,7 @@ class TemporalEncoderBlock(nn.Module):
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         use_global: bool=True,
         need_weights: bool=False,
-        average_attn_weights: bool=True
+        average_attn_weights: bool=True,
     ):
         """Initialize Temporal Encoder Block
 
@@ -84,7 +84,7 @@ class TemporalEncoderBlock(nn.Module):
         
         self.use_global = use_global
                 
-    def forward(self, local_feat: torch.Tensor, global_feat: Union[torch.Tensor, None]=None):
+    def forward(self, local_feat: torch.Tensor, global_feat: Union[torch.Tensor, None]=None, mask: Union[torch.Tensor, None]=None):
         """Perform forward pass
 
         Args:
@@ -107,18 +107,17 @@ class TemporalEncoderBlock(nn.Module):
         # TODO: Need to think about forward-backward or backward-forward methods
         
         if self.direction == "forward":
-            local_result, local_forward_attentions  = self.local_forward_attention(local_feat)
+            local_result, local_forward_attentions  = self.local_forward_attention(local_feat, mask)
             attention_weights = local_forward_attentions
             
         elif self.direction == "backward":
-            local_result, local_backward_attentions = self.local_backward_attention(local_feat)
+            local_result, local_backward_attentions = self.local_backward_attention(local_feat, mask)
             attention_weights = local_backward_attentions
 
         # elif self.direction == "backward-forward":
         #     local_result = self.local_backward_attention(local_feat)
         #     local_feat = torch.cat([local_feat[:, 1:, ...], local_result.unsqueeze(1)], dim=1)
         #     local_result = self.local_forward_attention(local_feat)
-        
         if self.use_global:
             torch._assert(
                 global_feat.dim() == 3,    
@@ -188,7 +187,7 @@ class TemporalEncoder(nn.Module):
         self.layers = TemporalMultiInputSequential(*layers)
         self.use_global = use_global
                 
-    def forward(self, local_feat: torch.Tensor, global_feat: Union[torch.Tensor, None]=None):
+    def forward(self, local_feat: torch.Tensor, global_feat: Union[torch.Tensor, None]=None, mask: Union[torch.Tensor, None]=None):
         """Perform forward pass
 
         Args:
@@ -210,9 +209,9 @@ class TemporalEncoder(nn.Module):
         if self.use_global:
             torch._assert(global_feat.dim() == 3, f"Expected Global Features of shape \
             (batch_size, seq_length, hidden_dim) got {global_feat.shape}")
-            return self.layers(local_feat, global_feat)
+            return self.layers(local_feat, global_feat, mask=mask)
         
         else:
-            return self.layers(local_feat)
+            return self.layers(local_feat, mask=mask)
 
         

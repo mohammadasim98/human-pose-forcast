@@ -14,6 +14,15 @@ class MultiInputSequential(nn.Sequential):
             else:
                 inputs = module(inputs)
         return inputs
+
+class VisionMultiInputSequential(nn.Sequential):
+    """ A custom nn.Sequential model for multiple inputs and outputs
+    """
+    def forward(self, inputs, key_padding_mask):
+        for module in self._modules.values():
+            inputs = module(inputs, key_padding_mask)
+
+        return inputs    
     
 class PoseMultiInputSequential(nn.Sequential):
     """ A custom nn.Sequential model for multiple inputs and outputs
@@ -27,15 +36,15 @@ class PoseMultiInputSequential(nn.Sequential):
 class TemporalMultiInputSequential(nn.Sequential):
     """ A custom nn.Sequential model for multiple inputs and outputs
     """
-    def forward(self, *inputs):
+    def forward(self, *inputs, mask):
         attentions = []
         for module in self._modules.values():
             if type(inputs) == tuple:
-                inputs = module(*inputs[:2])
+                inputs = module(*inputs[:2], mask=mask)
                 attentions.append(inputs[-1])
                 inputs = inputs[:2]
             else:
-                inputs = module(inputs)
+                inputs = module(inputs, mask=mask)
                 attentions.append(inputs[-1])
 
             

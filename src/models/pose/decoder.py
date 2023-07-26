@@ -68,7 +68,6 @@ class PoseDecoder(nn.Module):
             hidden_dim: int,
             out_dim: int,
             temporal: dict,
-            future_window: int,
             img_dim: int,
             pose_dim: int,
             num_layers: int = 4,
@@ -77,7 +76,8 @@ class PoseDecoder(nn.Module):
             norm_layer=partial(nn.LayerNorm, eps=1e-6),
             use_global: bool=False,
             need_weights: bool=False,
-            average_attn_weights: bool=True
+            average_attn_weights: bool=True,
+            residual: bool=False
     ) -> None:
         super().__init__()
         self.process_layer = nn.MultiheadAttention(hidden_dim, num_heads, dropout=dropout, batch_first=batch_first)
@@ -90,9 +90,9 @@ class PoseDecoder(nn.Module):
         self.decoder = nn.TransformerDecoder(self.decode_layer, num_layers)
         self.temporal_encoder = TemporalEncoder(**temporal["encoder"], use_global=use_global)
 
-        self.future_window = future_window
         self.need_weights=need_weights,
         self.average_attn_weights=average_attn_weights
+        self.residual=residual
         #######################################################
         # TODO: Need to implement a pose decoder block
         # self.block = PoseDecoderBlock(...)
@@ -130,6 +130,7 @@ class PoseDecoder(nn.Module):
         pos_encoding: torch.Tensor,
         tgt: torch.Tensor, 
         is_teacher_forcing: bool=False, 
+        future_window: int=15
 
     ) -> torch.Tensor:
         """Perform forward pass
@@ -145,7 +146,7 @@ class PoseDecoder(nn.Module):
         torch._assert(img_encoding.dim() == 3, f"Expected (batch_size, history_window + num_patches + 1, hidden_dim) got {img_encoding.shape}")
         torch._assert(pos_encoding.dim() == 3, f"Expected (batch_size, num_joints + history_window, hidden_dim) got {pos_encoding.shape}")
         torch._assert(tgt.dim() == 4, f"Expected (B, future_window + 1, num_joints + 1, hidden_dim) got {pos_encoding.shape}")
-        future_window_plus = self.future_window + 1
+        future_window_plus = future_window + 1
         
         memory, cross_attention_weights = self.process_input(img_encoding, pos_encoding)
 
@@ -159,6 +160,9 @@ class PoseDecoder(nn.Module):
             )      
 
             result = self.decoder(tgt=tgt_poses_temp, memory=memory) 
+            
+            if self.residual:
+                result += tgt_poses[:, -1, ...]
             
             # Concatenate the latest prediction
             tgt_poses = torch.cat([tgt_poses, result.unsqueeze(1)], dim=1)

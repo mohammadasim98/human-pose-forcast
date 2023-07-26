@@ -28,7 +28,8 @@ class ThreeDPWTFRecordDataset():
         shuffle: bool=False, 
         n_workers: int=0, 
         prefetch_factor: int=None,
-        transforms=None
+        transforms=None,
+        drop_null: bool=True,
         ) -> None:  
         """Wrapper on top of tfrecord.torch.dataset.TFRecordDataset
 
@@ -67,10 +68,10 @@ class ThreeDPWTFRecordDataset():
         self.prefetch_factor = prefetch_factor
         self.subsample = subsample
         self.resize = resize
-        
+        self.drop_null = drop_null
+
         self.n_scenes = n_scenes
         self.n_workers = n_workers
-        
         self.dataset = TFRecordDataset(data_path, None, feature_description, transform=self._parse, )
         
         self.history_data_list = []
@@ -136,6 +137,22 @@ class ThreeDPWTFRecordDataset():
             if num >= self.n_scenes:
                 break 
     
+    def _generate_key_padding_mask(self, poses: np.ndarray) -> np.ndarray:
+        
+        mask = np.where(poses==0.0, 1.0, 0.0)
+
+        return np.sum(mask, axis=-1).astype(bool)
+
+    def drop_null_pose(self, pose, person_id):
+
+        joint_mask = self._generate_key_padding_mask(pose)
+
+        frame_mask = np.where(np.sum(joint_mask, axis=-1) == 18.0, True, False)
+        counts = np.sum(frame_mask, axis=-1)
+        frame_mask = frame_mask[person_id, ...]
+        
+        return pose[person_id, ~frame_mask, ...], counts
+        
     def _window(self, data):
         """ Generate a rolling window for history and future sequences 
             based on the history and future window size, and the subsampling factor for a single scene.
@@ -163,24 +180,31 @@ class ThreeDPWTFRecordDataset():
         
         poses_3d = poses_3d[:, idx, :, :]
         trans_3d = trans_3d[:, idx, :]
+        counts = np.zeros((poses_2d.shape[0])).astype(int)
         
+
         # Define number of windowed data for a single scene
-        num = sub_frames - self.history_window - self.future_window + 1
         
         # Make sure in case of 1 visible person, the id does not exceed it.
         person_id = self.person_id if self.person_id < poses_2d.shape[0] else poses_2d.shape[0] - 1   
         
+        if self.drop_null:
+            poses_2d, counts = self.drop_null_pose(poses_2d, person_id)
+        else:
+            poses_2d = poses_2d[person_id, ...]
+        num = sub_frames - self.history_window - self.future_window + 1 - counts[person_id]
+
         history = []
         future = []
         # Convert the complete data into windowed representation
         for i in range(0, num):
             start = i
             end = self.history_window + start
-            history.append([image_strings[start:end], poses_2d[person_id, start:end, :, :], root_joints_2d[person_id, start:end, :], mask, poses_3d[person_id, start:end, :, :], trans_3d[person_id, start:end, :]])
+            history.append([image_strings[start:end], poses_2d[start:end, :, :], root_joints_2d[person_id, start:end, :], mask, poses_3d[person_id, start:end, :, :], trans_3d[person_id, start:end, :]])
 
             start = end
             end = self.future_window + start
-            future.append([image_strings[start:end], poses_2d[person_id, start:end, :, :], root_joints_2d[person_id, start:end, :], mask, poses_3d[person_id, start:end, :, :], trans_3d[person_id, start:end, :]])
+            future.append([image_strings[start:end], poses_2d[start:end, :, :], root_joints_2d[person_id, start:end, :], mask, poses_3d[person_id, start:end, :, :], trans_3d[person_id, start:end, :]])
 
         return history, future
     
