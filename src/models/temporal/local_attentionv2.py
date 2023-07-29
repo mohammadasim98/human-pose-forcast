@@ -21,7 +21,9 @@ class LocalForwardTemporalAttention(nn.Module):
         dropout: float=0.0,
         need_weights: bool=False,
         average_attn_weights: bool=True,
-        activation=nn.GELU
+        activation=nn.GELU,
+        num_layers: int=3,
+        use_lstm: bool=True
     ) -> None:
         """Initialize Local Forward Temporal Encoder
 
@@ -56,8 +58,9 @@ class LocalForwardTemporalAttention(nn.Module):
         
         self.mlpk = MLPBlock(hidden_dim, mlp_dim, activation=activation) 
         self.mlpq = MLPBlock(hidden_dim, mlp_dim, activation=activation) 
-        self.mlpv = MLPBlock(hidden_dim, mlp_dim, activation=activation) 
         
+        self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_layers, batch_first=True)
+        self.linear = nn.Linear(hidden_dim, hidden_dim)
         
          
     def forward(self, inputs: torch.Tensor, mask: Union[torch.Tensor, None]=None):
@@ -85,10 +88,12 @@ class LocalForwardTemporalAttention(nn.Module):
         # Use oldest feature sequence from history as the first query
         query = inputs[:, 0, :, :]  
         attended_values.append(query.unsqueeze(1))
+        states = None
+        att_weights = None
         for i in range(1, hw):
             # Update query
             key_value = inputs[:, i, :, :]
-
+            state = key_value
             # Layer norm 
             query_ln = self.ln_q(query)            
             key_value_ln = self.ln_kv(key_value)
@@ -111,10 +116,8 @@ class LocalForwardTemporalAttention(nn.Module):
             # - I though maybe it makes sense to add a residual after getting the attended values with 
             #   with the original key/value and then use it as a query in the next timestep  
             #############################################################################################
-            
-            
-            # Update query
-            query = key_value + attended_value
+            hidden, states = self.lstm(attended_value, states)
+            query = self.mlpq(hidden) + query_ln
             
             # Append attended queries
             attended_values.append(query.unsqueeze(1))
@@ -159,7 +162,9 @@ class LocalBackwardTemporalAttention(nn.Module):
         dropout: float=0.0,
         need_weights: bool=False,
         average_attn_weights: bool=True,
-        activation=nn.GELU
+        activation=nn.GELU,
+        num_layers: int=1,
+        use_lstm: bool=True
     ) -> None:
         """Initialize Local Backward Temporal Encoder
 
@@ -191,7 +196,9 @@ class LocalBackwardTemporalAttention(nn.Module):
         self.ln_2 = norm_layer(hidden_dim)
         self.mlp = MLPBlock(hidden_dim, mlp_dim, activation=activation) 
         self.mlpq = MLPBlock(hidden_dim, mlp_dim, activation=activation) 
-         
+        self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_layers, batch_first=True)
+        self.linear = nn.Linear(hidden_dim, hidden_dim)
+        
     def forward(self, inputs: torch.Tensor, mask: Union[torch.Tensor, None]=None):
         """Perform forward pass
 
@@ -217,6 +224,7 @@ class LocalBackwardTemporalAttention(nn.Module):
         # Use oldest feature sequence from history as the first query
         query = inputs[:, -1, :, :]        
         attended_values.append(query.unsqueeze(1))
+        states = None
         for i in range(hw-2, -1, -1):
             # Update key and value
             key_value = inputs[:, i, :, :]
@@ -245,7 +253,8 @@ class LocalBackwardTemporalAttention(nn.Module):
             #   with the original key/value and then use it as a query in the next timestep  
             #############################################################################################
             # Update query
-            query = key_value + attended_value
+            hidden, states = self.lstm(attended_value, states)
+            query = self.mlpq(hidden) + query_ln
             # Append attended queries
             attended_values.append(query.unsqueeze(1))
             if att_weights is not None:

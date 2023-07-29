@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch_dct as dct
 
+import numpy as np
 
 
 class DiscreteCosineTransformEmbedding(nn.Module):
@@ -69,15 +70,15 @@ class InverseDiscreteCosineTransformEmbedding(nn.Module):
         return out
     
     
-def get_dct_matrix(self, N):
-    dct_m = np.eye(N)
-    for k in np.arange(N):
-        for i in np.arange(N):
+def get_dct_matrix(N):
+    dct_m = torch.eye(N)
+    for k in torch.arange(N):
+        for i in torch.arange(N):
             w = np.sqrt(2 / N)
             if k == 0:
                 w = np.sqrt(1 / N)
-            dct_m[k, i] = w * np.cos(np.pi * (i + 1 / 2) * k / N)
-    idct_m = np.linalg.inv(dct_m)
+            dct_m[k, i] = w * torch.cos(np.pi * (i + 1 / 2) * k / N)
+    idct_m = torch.linalg.inv(dct_m)
     return dct_m, idct_m
         
         

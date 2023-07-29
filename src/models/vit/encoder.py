@@ -21,6 +21,7 @@ class EncoderBlock(nn.Module):
         dropout: float=0.0,
         batch_first: bool=True,
         need_weights = False,
+        activation=nn.GELU
     ):
         super().__init__()
         self.num_heads = num_heads
@@ -31,7 +32,7 @@ class EncoderBlock(nn.Module):
 
         # MLP block
         self.ln_2 = norm_layer(hidden_dim)
-        self.mlp = MLPBlock(hidden_dim, mlp_dim)
+        self.mlp = MLPBlock(hidden_dim, mlp_dim, activation=activation)
 
         self.need_weights = need_weights # Whether to return attention weights as well
 
@@ -66,7 +67,8 @@ class Encoder(nn.Module):
         mlp_dim: int,
         total_layers: int,
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
-        need_weights: bool=False
+        need_weights: bool=False,
+        activation=nn.GELU
     ):
         super().__init__()
         
@@ -81,7 +83,7 @@ class Encoder(nn.Module):
 
 
             layers[f"encoder_layer_{i}"] = EncoderBlock(num_heads, hidden_dim, mlp_dim, norm_layer,
-                                                        need_weights=need_weights)
+                                                        need_weights=need_weights, activation=activation)
         
 
             

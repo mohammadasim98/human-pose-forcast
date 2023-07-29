@@ -38,7 +38,7 @@ class FourierMLPEncoding(nn.Module):
     Inspired from positional encodings in NeRF
     """
 
-    def __init__(self, num_freq, d_model, n_input_dim):
+    def __init__(self, num_freq, d_model, n_input_dim, activation=nn.GELU):
         super().__init__()
         self.P_embed = num_freq
         self.d_model = d_model
@@ -46,7 +46,7 @@ class FourierMLPEncoding(nn.Module):
         self.pose_encoding_size = self.n_input_dim * (1 + 2 * num_freq)
         self.ff = nn.Sequential(
             nn.Linear(self.pose_encoding_size, self.d_model // 2),
-            nn.ReLU(),
+            activation(),
             nn.Linear(self.d_model // 2, self.d_model),
         )
 

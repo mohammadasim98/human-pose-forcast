@@ -143,7 +143,7 @@ class ThreeDPWTFRecordDataset():
 
         return np.sum(mask, axis=-1).astype(bool)
 
-    def drop_null_pose(self, pose, person_id):
+    def drop_null_pose(self, pose, image_strings, root_joints, person_id):
 
         joint_mask = self._generate_key_padding_mask(pose)
 
@@ -151,7 +151,7 @@ class ThreeDPWTFRecordDataset():
         counts = np.sum(frame_mask, axis=-1)
         frame_mask = frame_mask[person_id, ...]
         
-        return pose[person_id, ~frame_mask, ...], counts
+        return pose[person_id, ~frame_mask, ...], image_strings[~frame_mask, ...], root_joints[person_id, ~frame_mask, ...], counts
         
     def _window(self, data):
         """ Generate a rolling window for history and future sequences 
@@ -189,9 +189,10 @@ class ThreeDPWTFRecordDataset():
         person_id = self.person_id if self.person_id < poses_2d.shape[0] else poses_2d.shape[0] - 1   
         
         if self.drop_null:
-            poses_2d, counts = self.drop_null_pose(poses_2d, person_id)
+            poses_2d, image_strings, root_joints_2d, counts = self.drop_null_pose(poses_2d, image_strings, root_joints_2d, person_id)
         else:
             poses_2d = poses_2d[person_id, ...]
+            root_joints_2d = root_joints_2d[person_id, ...]
         num = sub_frames - self.history_window - self.future_window + 1 - counts[person_id]
 
         history = []
@@ -200,11 +201,11 @@ class ThreeDPWTFRecordDataset():
         for i in range(0, num):
             start = i
             end = self.history_window + start
-            history.append([image_strings[start:end], poses_2d[start:end, :, :], root_joints_2d[person_id, start:end, :], mask, poses_3d[person_id, start:end, :, :], trans_3d[person_id, start:end, :]])
+            history.append([image_strings[start:end], poses_2d[start:end, :, :], root_joints_2d[start:end, :], mask, poses_3d[person_id, start:end, :, :], trans_3d[person_id, start:end, :]])
 
             start = end
             end = self.future_window + start
-            future.append([image_strings[start:end], poses_2d[start:end, :, :], root_joints_2d[person_id, start:end, :], mask, poses_3d[person_id, start:end, :, :], trans_3d[person_id, start:end, :]])
+            future.append([image_strings[start:end], poses_2d[start:end, :, :], root_joints_2d[start:end, :], mask, poses_3d[person_id, start:end, :, :], trans_3d[person_id, start:end, :]])
 
         return history, future
     

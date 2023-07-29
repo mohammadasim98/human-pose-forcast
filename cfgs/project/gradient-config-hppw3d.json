@@ -8,42 +8,47 @@
             "pose": {
                 "spatial": {
                     "encoder":{
-                        "num_layers": 6,
-                        "num_heads": 8,
-                        "hidden_dim": 256,
+                        "num_layers": 3,
+                        "num_heads": 12,
+                        "hidden_dim": 384,
                         "mlp_dim": 768,
-                        "dropout": 0.0
+                        "dropout": 0.1
+                        
+                    },
+                    "embedding": {
+                        "embed_dim": 384,
+                        "nfreq": 15
                     }
                 },
                 "spatiotemporal": {
                     "spatial": {
                         "decoder": {
-                            "num_layers": 6,
-                            "num_heads": 8,
-                            "hidden_dim": 256,
+                            "num_layers": 3,
+                            "num_heads": 12,
+                            "hidden_dim": 384,
                             "out_dim": 768,
-                            "dropout": 0.0,
+                            "dropout": 0.1,
                             "use_global": false,
                             "residual": true
                         }
                     },
                     "temporal": {
                         "encoder": {
-                            "num_heads": 8,
-                            "hidden_dim": 256,
-                            "mlp_dim": 512,
-                            "dropout": 0.0,
-                            "directions": ["backward", "forward"]
+                            "num_heads": 12,
+                            "hidden_dim": 384,
+                            "mlp_dim": 768,
+                            "dropout": 0.1,
+                            "directions": ["backward", "forward", "forward"]
                         }
                     }
                 },
                 "temporal": {
                     "encoder": {
-                        "num_heads": 8,
-                        "hidden_dim": 256,
-                        "mlp_dim": 512,
-                        "dropout": 0.0,
-                        "directions": ["backward", "forward"]
+                        "num_heads": 12,
+                        "hidden_dim": 384,
+                        "mlp_dim": 768,
+                        "dropout": 0.1,
+                        "directions": ["backward", "forward", "forward"]
                     }
                 }
             },
@@ -52,7 +57,7 @@
                     "encoder":{
                         "image_size": 224, 
                         "patch_size": 16,  
-                        "num_layers": 6, 
+                        "num_layers": 4, 
                         "num_heads": 12,  
                         "hidden_dim": 768,
                         "mlp_dim": 3072,
@@ -64,11 +69,12 @@
                 },
                 "temporal": {
                     "encoder": {
-                        "num_heads": 8,
-                        "hidden_dim": 256,
-                        "mlp_dim": 512,
-                        "dropout": 0.0,
-                        "directions": ["backward", "forward"]
+                        "num_heads": 12,
+                        "hidden_dim": 384,
+                        "mlp_dim": 768,
+                        "dropout": 0.1,
+                        "directions": ["backward", "forward", "forward"]
+                        
                     }
                 }
             },
@@ -93,7 +99,7 @@
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/train.tfrecord", 
             "n_scenes": 7, 
-            "person_id": 0, 
+            "person_id": 1, 
             "subsample": 1, 
             "history_window": 15, 
             "future_window": 15, 
@@ -110,7 +116,7 @@
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/validation.tfrecord", 
             "n_scenes": 7, 
-            "person_id": 0, 
+            "person_id": 1, 
             "subsample": 1, 
             "history_window": 15, 
             "future_window": 15, 
@@ -127,7 +133,7 @@
         "args":{
             "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/test.tfrecord", 
             "n_scenes": 24, 
-            "person_id": 0, 
+            "person_id": 1, 
             "subsample": 1, 
             "history_window": 15, 
             "future_window": 15, 
@@ -140,21 +146,22 @@
         }
     },
     "curriculum": {
-        "history_window": 1,
-        "future_window": 1,
-        "max_history_window": 15,
-        "max_future_window": 15,
+        "history_window": 5,
+        "future_window": 3,
+        "max_history_window": 10,
+        "max_future_window": 10,
         "step": 2,
         "duration": 2
     },
     "optimizer": {
         "type": "Adam",
         "args":{
-            "lr": 0.0001
+            "lr": 0.000085,
+            "amsgrad": true
         }
     },
     "loss": {
-        "type": "mpjpev3",
+        "type": "mpjpev5",
         "args": {}
     } ,
     "metrics": [
@@ -168,10 +175,11 @@
 
     ],
     "lr_scheduler": {
-        "type": "StepLR",
+        "type": "ReduceLROnPlateau",
         "args": {
-            "step_size": 8,
-            "gamma": 0.85,
+            "factor": 0.9,
+            "patience": 6,
+            "mode": "min",
             "verbose": true
         }
     },
@@ -185,17 +193,23 @@
         "eval_period": 1,
         "verbosity": 2,
         "monitor": "min eval_loss2d",
-        "early_stop": 0       
+        "early_stop": 0
+        
     },
     "qsample": {
-        "batch_index": [5],
-        "sequence_index": [2],
+        "batch_index": [5, 25, 55, 66],
+        "sequence_index": [2, 25, 63],
         "period": 1
     },
     "use_pose_norm": true,
     "use_root_relative": true,
     "use_projection": false,
-    "use_dct": true,
+    "use_dct": false,
+    "dct_config": {
+        "hdct_n": 15,
+        "fdct_n": 15
+    },
+    "is_teacher_forcing": false,
     "tensorboard": false,
     "wandb": true
 

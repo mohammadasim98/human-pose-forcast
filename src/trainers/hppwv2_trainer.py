@@ -12,7 +12,7 @@ from torchvision.utils import make_grid
 from models.hppw.transforms import cvt_relative_pose, cvt_absolute_pose
 from models.embedding.dct import get_dct_matrix
 
-from trainers.base3d import BaseTrainer
+from trainers.basev2 import BaseTrainer
 
 from utils.viz import annotate_pose_2d, annotate_root_2d
 
@@ -23,7 +23,7 @@ def _generate_key_padding_mask(poses: torch.Tensor) -> torch.Tensor:
 
     return torch.sum(mask, dim=-1).bool()
 
-class HPPW3DTrainer(BaseTrainer):
+class HPPW3DTrainerV2(BaseTrainer):
 
     def __init__(self, config, train_loader, eval_loader=None):
         """
@@ -59,8 +59,9 @@ class HPPW3DTrainer(BaseTrainer):
         self.qperiod = self.qsample["period"]
         self.hdct_n = self.dct_config["hdct_n"]
         self.fdct_n = self.dct_config["fdct_n"]
+        self.count = 0
         
-    def send_imgs(self, history, future, output2d, qsequence_index, batch_idx):
+    def send_imgs(self, history, future, output2d, qsequence_index, batch_idx, name="val"):
 
 
         imgs = history[0][qsequence_index, -self.history_window:, ...].cpu().numpy()
@@ -70,10 +71,14 @@ class HPPW3DTrainer(BaseTrainer):
         hist_root2d = history[2][qsequence_index, -self.history_window:, ...].unsqueeze(0).cpu().numpy()
         gt_pose2d = future[0][qsequence_index, :self.future_window, ...].unsqueeze(0).cpu().numpy()
         gt_root2d = future[1][qsequence_index, :self.future_window, ...].unsqueeze(0).cpu().numpy()
-
+        
+        gt_pose2d = np.concatenate([hist_pose2d, gt_pose2d], axis=1)
+        gt_root2d = np.concatenate([hist_root2d, gt_root2d], axis=1)
+        
         root2d = None
         # (1, S, N, 2) or (S, N+1, 2)
         pred2d = output2d[qsequence_index, ...].unsqueeze(0)
+        
 
         if self.use_pose_norm:
             pred2d *= imgs.shape[2]
@@ -95,6 +100,7 @@ class HPPW3DTrainer(BaseTrainer):
 
         imgs_list = []
 
+            
         for j in range(hist_pose2d.shape[1]-1):
             annotated_img = annotate_pose_2d(img=imgs[j, ...], pose=hist_pose2d[:, j, ...], color=(255, 0, 0), radius=2, thickness=2, text=False)
             annotated_img = annotate_root_2d(img=annotated_img, root=hist_root2d[:, j, ...], color=(0, 0, 255), thickness=3)
@@ -102,20 +108,18 @@ class HPPW3DTrainer(BaseTrainer):
             imgs_list.append(self.wandb.Image(annotated_img.astype(np.uint8)[..., ::-1]))
 
 
-
         for j in range(pred2d.shape[1]):
-            curr_img = deepcopy(imgs[-1, ...])
 
+            curr_img = deepcopy(imgs[-1, ...])
             gt_abs_pose = gt_pose2d[:, j, ...]
             gt_root_joint = gt_root2d[:, j, ...]
 
             pred_abs = pred2d[:, j, ...].astype(np.uint8)
-
-            # abs_pose = cvt_absolute_pose(root_joint=np.expand_dims(root_joint, 0), norm_pose=np.expand_dims(norm_pose, 0))
             
-
             annotated_img = annotate_pose_2d(img=curr_img, pose=gt_abs_pose, color=(0, 255, 0), radius=2, thickness=2, text=False)
             annotated_img = annotate_root_2d(img=annotated_img,root=gt_root_joint, color=(0, 255, 255), thickness=3)
+            
+            
             
             annotated_img = annotate_pose_2d(img=annotated_img, pose=pred_abs, color=(0, 0, 255), radius=2, thickness=2, text=False)
             if root2d is not None:
@@ -126,7 +130,7 @@ class HPPW3DTrainer(BaseTrainer):
             imgs_list.append(self.wandb.Image(annotated_img.astype(np.uint8)[..., ::-1]))
 
 
-        self.wandb.log({f"images_{qsequence_index}_{batch_idx}": imgs_list})
+        self.wandb.log({f"{name}-images_{qsequence_index}_{batch_idx}": imgs_list})
         
     def _train_epoch(self):
         """
@@ -144,6 +148,18 @@ class HPPW3DTrainer(BaseTrainer):
         
         hdct_n = self.hdct_n if self.hdct_n <= self.history_window else self.history_window
         fdct_n = self.fdct_n if self.fdct_n <= self.future_window else self.future_window
+        self.count += 1
+
+        is_teacher_forcing = self.is_teacher_forcing
+            
+        if self.is_teacher_forcing and self.count >= int(self.curriculum["duration"]/2):
+            is_teacher_forcing = False
+        
+        if self.is_teacher_forcing and self.current_epoch == self.curriculum["duration"]:
+            is_teacher_forcing = True
+            self.count = 0
+        
+        self.logger.debug(f"Teacher Forcing: {is_teacher_forcing} {self.count}")
 
         pbar = tqdm(total=len(self._train_loader) * self._train_loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
         for batch_idx, (history, future) in enumerate(self._train_loader):
@@ -194,7 +210,7 @@ class HPPW3DTrainer(BaseTrainer):
                 future_poses2d = future_pose2d_seq
                 history_poses2d = history_pose2d_seq   
                 history_poses3d = history_pose3d_seq  
-                future_poses3d = future_poses3d  
+                future_poses3d = future_pose3d_seq  
                 history_pose_mask = history_pose2d_mask
                 future_pose_mask = future_pose2d_mask
             
@@ -217,7 +233,6 @@ class HPPW3DTrainer(BaseTrainer):
                 
             
             self.optimizer.zero_grad()
-            self.model.zero_grad()
             
 #             if self.use_dct:
 #                 dct_m, idct_m = get_dct_matrix(history_poses2d.shape[1])
@@ -226,13 +241,13 @@ class HPPW3DTrainer(BaseTrainer):
 
             output2d, _ = self.model(
                 img_seq=img_seq, 
-                relative_pose_seq=history_pose2d_seq, 
-                root_joint_seq=history_root_seq, 
-                mask=history_mask, 
-                pose_mask=history_pose_mask,
+                history_pose=history_poses2d, 
+                img_mask=history_mask, 
+                history_pose_mask=history_pose_mask,
                 future_window=self.future_window, 
-                is_teacher_forcing=self.is_teacher_forcing, 
-                future=future_poses2d, 
+                history_window=self.history_window,
+                is_teacher_forcing=is_teacher_forcing, 
+                future_pose=future_poses2d, 
                 future_pose_mask=future_pose_mask
             )                
             
@@ -256,6 +271,7 @@ class HPPW3DTrainer(BaseTrainer):
                 
                 output2d = torch.cat([out_root_seq.unsqueeze(2), out_poses2d], dim=2)
                 
+            pose2d_mask = torch.cat([history_pose_mask, future_pose_mask], dim=1)
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
             loss_2d = self.criterion(output2d, future_poses2d, future_pose_mask)
             loss = loss_2d
@@ -304,7 +320,15 @@ class HPPW3DTrainer(BaseTrainer):
             #         self.writer.add_image('input_train', make_grid(history.cpu(), nrow=8, normalize=True))
 
             pbar.update(self._train_loader.batch_size)
+            
+            if self.wandb_enabled:
 
+                if self.current_epoch % 3 == 0:
+                    for qsequence_index in self.qsequence_index:
+                        for index in self.qbatch_index:
+                            if index == batch_idx:
+                                self.send_imgs(history, future, output2d.detach(), qsequence_index, index, "train")
+            
         log_dict = self.epoch_metrics.result()
         pbar.close()
         self.logger.debug(f"==> Finished Epoch {self.current_epoch}/{self.epochs}.")
@@ -390,7 +414,7 @@ class HPPW3DTrainer(BaseTrainer):
                 future_poses2d = future_pose2d_seq
                 history_poses2d = history_pose2d_seq   
                 history_poses3d = history_pose3d_seq  
-                future_poses3d = future_poses3d  
+                future_poses3d = future_pose3d_seq  
                 history_pose_mask = history_pose2d_mask
                 future_pose_mask = future_pose2d_mask
             
@@ -411,18 +435,25 @@ class HPPW3DTrainer(BaseTrainer):
                 history_poses2d = history_poses2d.view(self.history_window, b, n, e).permute(1, 0, 2, 3).contiguous()
                 history_root_seq = history_root_seq.view(self.history_window, b, e).permute(1, 0, 2).contiguous()
 
+            
+#             if self.use_dct:
+#                 dct_m, idct_m = get_dct_matrix(history_poses2d.shape[1])
+                
+#                 history_poses2d = torch.matmul(dct_m[:dct_n, :], history_poses2d.permute())
+
             output2d, _ = self.model(
                 img_seq=img_seq, 
-                relative_pose_seq=history_pose2d_seq, 
-                root_joint_seq=history_root_seq, 
-                mask=history_mask, 
-                pose_mask=history_pose_mask,
-                future_window=self.future_window,
-                is_teacher_forcing=False,
-                future=None,
+                history_pose=history_poses2d, 
+                img_mask=history_mask, 
+                history_pose_mask=history_pose_mask,
+                future_window=self.future_window, 
+                history_window=self.history_window,
+                is_teacher_forcing=False, 
+                future_pose=None, 
                 future_pose_mask=None
-            ) 
+            )                
             
+        
             if self.use_dct:
                 dct_m, idct_m = get_dct_matrix(self.future_window)
                 
@@ -441,9 +472,11 @@ class HPPW3DTrainer(BaseTrainer):
                 out_root_seq = out_root_seq.view(self.future_window, b, e).permute(1, 0, 2).contiguous()
                 
                 output2d = torch.cat([out_root_seq.unsqueeze(2), out_poses2d], dim=2)
-            
+                
+            pose2d_mask = torch.cat([history_pose_mask, future_pose_mask], dim=1)
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
             loss_2d = self.criterion(output2d, future_poses2d, future_pose_mask)
+            loss = loss_2d
 
             
             if self.use_projection:

@@ -43,7 +43,7 @@ class VIM:
             per_pose_mean = torch.sum(norm_per_joint, dim=-1) / denom
         
         else:
-            norm_per_joint = torch.sqrt(sum_per_joint)
+            norm_per_joint = torch.sqrt(torch.sum(sum_per_joint, dim=-1))
             per_pose_mean = torch.mean(norm_per_joint, dim=-1)
 
         mean = torch.mean(per_pose_mean)

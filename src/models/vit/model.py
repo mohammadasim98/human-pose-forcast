@@ -31,10 +31,11 @@ class VisionTransformer(nn.Module):
         root_path: str,
         need_weights: bool=False,
         global_pool: str="avg",
-        device: str="cpu"
+        device: str="cpu",
+        activation=nn.GELU
     ):
         super().__init__()
-        torch._assert(num_layers < total_layers, "The number of layers to use cannot be larger than the total number of layers")
+        torch._assert(num_layers <= total_layers, "The number of layers to use cannot be larger than the total number of layers")
         torch._assert(image_size % patch_size == 0, "Input shape indivisible by patch size!")
         self.image_size = image_size
         self.patch_size = patch_size
@@ -67,6 +68,7 @@ class VisionTransformer(nn.Module):
             total_layers,
             self.norm_layer,
             need_weights,
+            activation=activation
         )
         
         # Need to define it to be able to load the state dictionary.

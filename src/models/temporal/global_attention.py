@@ -18,7 +18,8 @@ class GlobalTemporalAttention(nn.Module):
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         dropout: float=0.0,
         need_weights: bool=False,
-        average_attn_weights: bool=True
+        average_attn_weights: bool=True,
+        activation=nn.GELU
     ) -> None:
         """Initialize Global Bi-directional Temporal Encoder
 
@@ -39,7 +40,7 @@ class GlobalTemporalAttention(nn.Module):
 
         # MLP block
         self.ln_2 = norm_layer(hidden_dim)
-        self.mlp = MLPBlock(hidden_dim, mlp_dim)
+        self.mlp = MLPBlock(hidden_dim, mlp_dim, activation=activation)
 
         self.need_weights = need_weights # Whether to return attention weights as well
         self.average_attn_weights = average_attn_weights

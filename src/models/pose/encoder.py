@@ -80,6 +80,7 @@ class PoseEncoderBlock(nn.Module):
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         dropout: float=0.0,
         need_weights = False,
+        activation=nn.GELU
     ):
         super().__init__()
         self.num_heads = num_heads
@@ -91,7 +92,7 @@ class PoseEncoderBlock(nn.Module):
 
         # MLP block
         self.ln_2 = norm_layer(hidden_dim)
-        self.mlp = MLPBlock(hidden_dim, mlp_dim)
+        self.mlp = MLPBlock(hidden_dim, mlp_dim, activation)
 
         self.need_weights = need_weights 
         
@@ -136,6 +137,7 @@ class PoseEncoder(nn.Module):
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         dropout: float=0.0,
         need_weights = False,
+        activation=nn.GELU
         ) -> None:
         
         super().__init__()
@@ -145,7 +147,7 @@ class PoseEncoder(nn.Module):
         # self.block = PoseEncoderBlock(...)
         layers = []
         for i in range(num_layers):
-            layers.append(PoseEncoderBlock(num_heads, hidden_dim, mlp_dim, norm_layer, dropout, need_weights))
+            layers.append(PoseEncoderBlock(num_heads, hidden_dim, mlp_dim, norm_layer, dropout, need_weights, activation=activation))
         
         self.layers = PoseMultiInputSequential(*layers)
         
@@ -169,6 +171,51 @@ class PoseEncoder(nn.Module):
 
         result = self.layers(input, pose_mask)
         
-        return result[:, 1:, ...], result[:, 0, ...]
+        return result[:, 1:, ...], result[:, 0, ...]    
+    
+class PoseEncoderV2(nn.Module):
+    """ Pose Encoder
+    """
+    
+    def __init__(
+        self, 
+        num_layers: int,
+        num_heads: int, 
+        hidden_dim: int,
+        mlp_dim: int,
+        norm_layer = partial(nn.LayerNorm, eps=1e-6),
+        dropout: float=0.0,
+        need_weights = False,
+        activation=nn.GELU
+        ) -> None:
+        
+        super().__init__()
+        
+        #######################################################
+        # TODO: Need to implement a pose encoder
+        # self.block = PoseEncoderBlock(...)
+        layers = []
+        for i in range(num_layers):
+            layers.append(PoseEncoderBlock(num_heads, hidden_dim, mlp_dim, norm_layer, dropout, need_weights, activation=activation))
+        
+        self.layers = PoseMultiInputSequential(*layers)
+        
+    def forward(self, poses: torch.Tensor, pose_mask: Union[torch.Tensor, None]=None):
+        """Perform forward pass
+
+        Args:
+            root_joints (torch.tensor): An input of shape (batch_size*sequence_length,  E) 
+                or (batch_size, E)
+            relative_poses (torch.tensor): An input of shape (batch_size*sequence_length, num_joints, E) 
+                or (batch_size, num_joints, E)
+
+        Raises:
+            NotImplementedError: Need to implement forward pass
+        """
+        torch._assert(poses.dim() == 3, f"Expected (batch_size*sequence_length, num_joints, E) or (batch_size, num_joints, E) got {poses.shape}")
+
+        result = self.layers(poses, pose_mask)
+        
+        return result
 
         
