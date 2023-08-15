@@ -3,37 +3,39 @@
     "n_gpu": 1,
 
     "arch": {
-        "type": "HumanPosePredictorModelV2",
+        "type": "HumanPosePredictorModelV3",
         "args": {
             "config": {
                 "pose_embedding": {
-                    "pose_sigma": 16,
-                    "root_sigma": 2,
-                    "nfreq": 32
+                    "pose_sigma": 128,
+                    "root_sigma": 32,
+                    "nfreq": 64
                 },
                 "pose_encoder": {
                     "num_layers": 3,
-                    "num_heads": 16,
+                    "num_heads": 8,
                     "hidden_dim": 256,
                     "mlp_dim": 768,
-                    "dropout": 0.001
+                    "dropout": 0.0
                 },
                 "pose_decoder": {
-                    "num_layers": 6,
-                    "num_heads": 16,
+                    "num_layers": 3,
+                    "num_heads": 8,
                     "hidden_dim": 256,
-                    "dropout": 0.001,
+                    "mlp_dim": 768,
+                    "dropout": 0.0,
                     "batch_first": true
 
                 },
                 "temporal_encoder": {
-                    "num_heads": 16,
+                    "num_heads": 8,
                     "hidden_dim": 256,
                     "mlp_dim": 768,
-                    "dropout": 0.001,
-                    "directions": ["backward", "forward"],
+                    "dropout": 0.0,
+                    "directions": ["bidirectional", "forward"],
                     "num_lstm_layers": 1,
-                    "use_lstm": false
+                    "use_lstm": false,
+                    "num_layers": 1
 
                 },
                 "image_encoder":{
@@ -51,7 +53,7 @@
                 "dual_attention": {
                     "num_heads": 16,
                     "embed_dim": 256,
-                    "dropout": 0.001,
+                    "dropout": 0.0,
                     "batch_first": true
 
                 },
@@ -75,17 +77,17 @@
     "train_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
-            "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/train.tfrecord", 
+            "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/test.tfrecord", 
             "n_scenes": 24, 
             "person_id": 1, 
             "subsample": 2, 
             "history_window": 10, 
             "future_window": 10, 
-            "batch_size": 64, 
+            "batch_size": 48, 
             "resize": [224, 224, 3],
             "shuffle": true, 
             "n_workers": 8, 
-            "prefetch_factor": 2,
+            "prefetch_factor": 4,
             "drop_null": true
         }
     },
@@ -98,24 +100,24 @@
             "subsample": 2, 
             "history_window": 10, 
             "future_window": 10, 
-            "batch_size": 64, 
+            "batch_size": 48, 
             "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 8, 
-            "prefetch_factor": 2,
+            "prefetch_factor": 4,
             "drop_null": true
         }
     },
     "test_loader": {
         "type": "ThreeDPWTFRecordDataset",
         "args":{
-            "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/test.tfrecord", 
+            "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/train.tfrecord", 
             "n_scenes": 24, 
             "person_id": 1, 
             "subsample": 2, 
             "history_window": 10, 
             "future_window": 10, 
-            "batch_size": 32, 
+            "batch_size": 48, 
             "resize": [224, 224, 3],
             "shuffle": false, 
             "n_workers": 8, 
@@ -124,8 +126,8 @@
         }
     },
     "curriculum": {
-        "history_window": 6,
-        "future_window": 4,
+        "history_window": 10,
+        "future_window": 10,
         "max_history_window": 10,
         "max_future_window": 10,
         "step":1 ,
@@ -134,11 +136,12 @@
     "optimizer": {
         "type": "Adam",
         "args":{
-            "lr": 0.00001
+            "lr": 0.00001,
+            "amsgrad": true
         }
     },
     "loss": {
-        "type": "mpjpev10",
+        "type": "combined_loss",
         "args": {}
     } ,
     "metrics": [

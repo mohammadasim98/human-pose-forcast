@@ -7,14 +7,14 @@ import rff
 
 from models.embedding import *
 from models.pose.encoder import PoseEncoderV2
-from models.temporal.encoderv2 import TemporalEncoderV2
-from models.vit.model import VisionTransformer
+from models.temporal.encoderv3 import TemporalEncoderV3
+from models.vit.modelv2 import VisionTransformer
 from models.embedding.fourier import FourierEncoding, FourierMLPEncoding
 from models.projection.model import LinearProjection
     
     
     
-class HumanPosePredictorModelV2(nn.Module):
+class HumanPosePredictorModelV3(nn.Module):
     
     def __init__(
         self,
@@ -46,22 +46,23 @@ class HumanPosePredictorModelV2(nn.Module):
         # Our method's building blocks
         self.pose_encoder = PoseEncoderV2(**self.pose_encoder_args, activation=activation)
         self.image_encoder = VisionTransformer(**self.image_encoder_args, activation=activation)
-        
+        # print(self.image_encoder_args["patch_size"])
         # for param in self.image_encoder.parameters():
         #     param.requires_grad = False
 
-        self.im_temporal_encoder = TemporalEncoderV2(**self.temporal_encoder_args, activation=activation)
-        self.pose_temporal_encoder = TemporalEncoderV2(**self.temporal_encoder_args, activation=activation)
+        self.im_temporal_encoder = TemporalEncoderV3(**self.temporal_encoder_args, activation=activation)
+        self.pose_temporal_encoder = TemporalEncoderV3(**self.temporal_encoder_args, activation=activation)
         self.dual_attention = nn.MultiheadAttention(**config["dual_attention"])
         
-        hidden_dim = config["pose_decoder"]["hidden_dim"]
-        num_heads = config["pose_decoder"]["num_heads"]
-        dropout = config["pose_decoder"]["dropout"]
-        num_layers = config["pose_decoder"]["num_layers"]
-        batch_first = config["pose_decoder"]["batch_first"]
+        hidden_dim = self.pose_decoder_args["hidden_dim"]
+        num_heads = self.pose_decoder_args["num_heads"]
+        dropout = self.pose_decoder_args["dropout"]
+        num_layers = self.pose_decoder_args["num_layers"]
+        batch_first = self.pose_decoder_args["batch_first"]
+        dim_feedforward = self.pose_decoder_args["mlp_dim"]
 
 
-        self.decoder_layer = nn.TransformerDecoderLayer(d_model=hidden_dim, nhead=num_heads, dropout=dropout, activation=activation(), batch_first=batch_first)
+        self.decoder_layer = nn.TransformerDecoderLayer(d_model=hidden_dim, nhead=num_heads, dim_feedforward=dim_feedforward, dropout=dropout, activation=activation(), batch_first=batch_first)
         self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers)
 
         self.pose_emb_dim = self.pose_encoder_args["hidden_dim"]
@@ -70,10 +71,11 @@ class HumanPosePredictorModelV2(nn.Module):
         # self.pose_embedding = FourierMLPEncoding(num_freq=self.pose_embedding_args["nfreq"], d_model=self.pose_embedding_args["embed_dim"], n_input_dim=self.pose_emb_dim, activation=activation)
         
         self.output_proj = nn.Linear(self.pose_emb_dim, 2)
-        self.embed_proj = nn.Linear(2, 4)
+        
+        self.embed_proj = nn.Linear(2, int(self.pose_emb_dim / (self.pose_embedding_args["nfreq"] * 2)))
 
         self.device = config["device"]
-        self.activation = activation()
+        self.activation = nn.Tanh()
         
         self.need_weights = False
         self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_layers, batch_first=True)
@@ -268,8 +270,7 @@ class HumanPosePredictorModelV2(nn.Module):
             
             memory_pose, temp_states, pose_attentions = self.pose_temporal_encoder(encoded_poses, mask=pose_mask, states=temp_states)
             dual_attention_weights = None
-
-                
+                            
             memory, dual_attention_weight = self.dual_attention(
                 query=memory_pose, 
                 key=memory_img, 
@@ -278,6 +279,9 @@ class HumanPosePredictorModelV2(nn.Module):
                 average_attn_weights=True,
                 key_padding_mask=img_mask[:, -1, ...]
             )
+            
+            memory = memory + memory_pose
+            
             if need_weights:
                 dual_attention_weights.append(dual_attention_weight)
             # memory, mem_state = self.lstm(memory, mem_states)
@@ -288,6 +292,7 @@ class HumanPosePredictorModelV2(nn.Module):
             
             # (B, J, 2)
             result = self.output_proj(result) + prev
+            result = self.activation(result)
             prev = future_pose[:, i, ...] if is_teacher_forcing else result
             # prev = result
             # (B, N, J, E)

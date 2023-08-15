@@ -42,18 +42,18 @@ class EncoderBlock(nn.Module):
         result = None
         attention_weights = None # Needed only if self.need_weights is True for this specific Block
 
-        x0 = self.ln_1(input)
         # print(x0.shape)
-        x1, attention_weights = self.self_attention(x0, x0, x0, key_padding_mask=key_padding_mask, need_weights=self.need_weights)
-        x2 = input + x1
-        x3 = self.ln_2(x2)
-        x4 = self.mlp(x3)
-        result = x2 + x4
+        attended_input, attention_weights = self.self_attention(input, input, input, key_padding_mask=key_padding_mask, need_weights=self.need_weights)
+        attended_input += input
+        attended_input = self.ln_1(attended_input)
+        attended_input_mlp = self.mlp(attended_input)
+        attended_input_mlp += attended_input
+        attended_input_ln = self.ln_2(attended_input_mlp)
 
         if self.need_weights:
-            return result, attention_weights
+            return attended_input_ln, attention_weights
         else: 
-            return result
+            return attended_input_ln
 
 
 class Encoder(nn.Module):
@@ -79,19 +79,24 @@ class Encoder(nn.Module):
         self.pos_embedding = nn.Parameter(torch.empty(1, seq_length, hidden_dim).normal_(std=0.02))  # from BERT
 
         # Need to load all the layers first to be able to load the weights
-        layers: OrderedDict[str, nn.Module] = OrderedDict()
+        layers = []
         for i in range(total_layers):
 
 
-            layers[f"encoder_layer_{i}"] = EncoderBlock(num_heads, hidden_dim, mlp_dim, norm_layer,
-                                                        need_weights=need_weights, activation=activation)
+            layers.append(
+                EncoderBlock(
+                    num_heads=num_heads, 
+                    hidden_dim=hidden_dim, 
+                    mlp_dim=mlp_dim,
+                    norm_layer=norm_layer, 
+                    need_weights=need_weights, 
+                    activation=activation
+                )
+            )
         
-
             
-        self.layers = VisionMultiInputSequential(layers)
-        
-        # final layer norm
-        self.ln = norm_layer(hidden_dim) 
+        self.layers = VisionMultiInputSequential(*layers)
+
 
     def forward(self, input: torch.Tensor, key_padding_mask: Union[torch.Tensor, None]):
         torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
@@ -100,7 +105,5 @@ class Encoder(nn.Module):
         
         # Take a subset of pretrained encoder layers
         result = self.layers(input, key_padding_mask)
-
-        result = self.ln(result) # Final layer norm
 
         return result

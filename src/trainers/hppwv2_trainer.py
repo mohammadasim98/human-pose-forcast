@@ -5,7 +5,6 @@ import torch.nn as nn
 from copy import deepcopy
 from tqdm import tqdm
 
-from torchvision.utils import make_grid
 
 
 
@@ -67,13 +66,13 @@ class HPPW3DTrainerV2(BaseTrainer):
         imgs = history[0][qsequence_index, -self.history_window:, ...].cpu().numpy()
 
         # (1, S, N, 2)
-        hist_pose2d = history[1][qsequence_index, -self.history_window:, ...].unsqueeze(0).cpu().numpy()
+        hist_pose2d = history[1][qsequence_index, -self.history_window:, :14, :].unsqueeze(0).cpu().numpy()
         hist_root2d = history[2][qsequence_index, -self.history_window:, ...].unsqueeze(0).cpu().numpy()
-        gt_pose2d = future[0][qsequence_index, :self.future_window, ...].unsqueeze(0).cpu().numpy()
+        gt_pose2d = future[0][qsequence_index, :self.future_window, :14, :].unsqueeze(0).cpu().numpy()
         gt_root2d = future[1][qsequence_index, :self.future_window, ...].unsqueeze(0).cpu().numpy()
         
-        gt_pose2d = np.concatenate([hist_pose2d, gt_pose2d], axis=1)
-        gt_root2d = np.concatenate([hist_root2d, gt_root2d], axis=1)
+        # gt_pose2d = np.concatenate([hist_pose2d, gt_pose2d], axis=1)
+        # gt_root2d = np.concatenate([hist_root2d, gt_root2d], axis=1)
         
         root2d = None
         # (1, S, N, 2) or (S, N+1, 2)
@@ -148,16 +147,14 @@ class HPPW3DTrainerV2(BaseTrainer):
         
         hdct_n = self.hdct_n if self.hdct_n <= self.history_window else self.history_window
         fdct_n = self.fdct_n if self.fdct_n <= self.future_window else self.future_window
-        self.count += 1
 
         is_teacher_forcing = self.is_teacher_forcing
             
-        if self.is_teacher_forcing and self.count >= int(self.curriculum["duration"]/2):
-            is_teacher_forcing = False
+#         if self.is_teacher_forcing and self.current_epoch <= 25:
+#             is_teacher_forcing = True
         
-        if self.is_teacher_forcing and self.current_epoch == self.curriculum["duration"]:
-            is_teacher_forcing = True
-            self.count = 0
+#         if self.is_teacher_forcing and self.current_epoch >= 25:
+#             is_teacher_forcing = False
         
         self.logger.debug(f"Teacher Forcing: {is_teacher_forcing} {self.count}")
 
@@ -165,7 +162,7 @@ class HPPW3DTrainerV2(BaseTrainer):
         for batch_idx, (history, future) in enumerate(self._train_loader):
 
             img_seq = history[0][:, -self.history_window:, ...].float().to(self._device)
-            history_pose2d_seq = history[1][:, -self.history_window:, ...].float().to(self._device)
+            history_pose2d_seq = history[1][:, -self.history_window:, :14, :].float().to(self._device)
             history_root_seq = history[2][:, -self.history_window:, ...].float().to(self._device)
             history_mask = history[3].float().to(self._device)
             history_pose3d_seq = history[4][:, -self.history_window:, ...].to(self._device)
@@ -174,7 +171,7 @@ class HPPW3DTrainerV2(BaseTrainer):
             history_pose2d_mask = _generate_key_padding_mask(history_pose2d_seq)
             history_root_mask = _generate_key_padding_mask(history_root_seq)
             
-            future_pose2d_seq = future[0][:, :self.future_window, ...].float().to(self._device)
+            future_pose2d_seq = future[0][:, :self.future_window, :14, :].float().to(self._device)
             future_root_seq = future[1][:, :self.future_window, ...].float().to(self._device)
             future_pose3d_seq = future[2][:, :self.future_window, ...].to(self._device)
             future_trans_seq = future[3][:, :self.future_window, ...].to(self._device)
@@ -369,7 +366,7 @@ class HPPW3DTrainerV2(BaseTrainer):
 
 
             img_seq = history[0][:, -self.history_window:, ...].float().to(self._device)
-            history_pose2d_seq = history[1][:, -self.history_window:, ...].float().to(self._device)
+            history_pose2d_seq = history[1][:, -self.history_window:, :14, :].float().to(self._device)
             history_root_seq = history[2][:, -self.history_window:, ...].float().to(self._device)
             history_mask = history[3].float().to(self._device)
             history_pose3d_seq = history[4][:, -self.history_window:, ...].to(self._device)
@@ -378,7 +375,7 @@ class HPPW3DTrainerV2(BaseTrainer):
             history_pose2d_mask = _generate_key_padding_mask(history_pose2d_seq)
             history_root_mask = _generate_key_padding_mask(history_root_seq)
             
-            future_pose2d_seq = future[0][:, :self.future_window, ...].float().to(self._device)
+            future_pose2d_seq = future[0][:, :self.future_window, :14, :].float().to(self._device)
             future_root_seq = future[1][:, :self.future_window, ...].float().to(self._device)
             future_pose3d_seq = future[2][:, :self.future_window, ...].to(self._device)
             future_trans_seq = future[3][:, :self.future_window, ...].to(self._device)

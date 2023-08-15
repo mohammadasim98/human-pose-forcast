@@ -61,3 +61,30 @@ class TemporalMultiInputSequentialV2(nn.Sequential):
             attentions.append(attention)
 
         return inputs, attentions
+    
+class TemporalMultiInputSequentialV3(nn.Sequential):
+    """ A custom nn.Sequential model for multiple inputs and outputs
+    """
+    def forward(self, inputs, mask, states):
+        attentions = []
+        for module in self._modules.values():
+            inputs, states, attention = module(feat=inputs, mask=mask, states=states)
+            attentions.append(attention)
+
+        return inputs, states, attentions
+    
+    
+    
+class AttentionMultiInputSequential(nn.Sequential):
+    """ A custom nn.Sequential model for multiple inputs and outputs
+    """
+    def forward(self, query, key, value, mask):
+        attentions = []
+        for i, module in enumerate(self._modules.values()):
+            query, attention = module(query, key, value, mask)
+
+            if attention is not None:   
+                attentions.append(attention)
+
+            
+        return query, attentions

@@ -5,7 +5,7 @@ from typing import Union
 from functools import partial
 
 from models.common.sequential import TemporalMultiInputSequentialV3
-from models.temporal.local_attentionv2 import LocalBackwardTemporalAttention, LocalForwardTemporalAttention, BidirectionalTemporalAttention
+from models.temporal.local_attentionv3 import LocalBackwardTemporalAttention, LocalForwardTemporalAttention, BidirectionalTemporalAttention
 
       
 class TemporalEncoderBlock(nn.Module):
@@ -25,7 +25,8 @@ class TemporalEncoderBlock(nn.Module):
         average_attn_weights: bool=True,
         activation=nn.GELU,
         num_lstm_layers: int=3,
-        use_lstm: bool=False
+        use_lstm: bool=False,
+        num_layers: int=3
     ):
         """Initialize Temporal Encoder Block
 
@@ -50,49 +51,56 @@ class TemporalEncoderBlock(nn.Module):
         self.reduce = reduce
         self.direction = direction
         self.need_weights = need_weights 
-        self.local_forward_attention = LocalForwardTemporalAttention(
-            num_heads=num_heads, 
-            hidden_dim=hidden_dim,
-            mlp_dim=mlp_dim, 
-            norm_layer=norm_layer,
-            reduce=reduce,
-            dropout=dropout, 
-            need_weights=need_weights,
-            average_attn_weights=average_attn_weights,
-            activation=activation,
-            use_lstm=use_lstm,
-            num_layers=num_lstm_layers
-        )
         
-        self.local_backward_attention = LocalBackwardTemporalAttention(
-            num_heads=num_heads, 
-            hidden_dim=hidden_dim,
-            mlp_dim=mlp_dim, 
-            norm_layer=norm_layer,
-            reduce=reduce,
-            dropout=dropout, 
-            need_weights=need_weights,
-            average_attn_weights=average_attn_weights,
-            activation=activation,
-            use_lstm=use_lstm,
-            num_layers=num_lstm_layers
+        if self.direction == "forward":
+            self.local_forward_attention = LocalForwardTemporalAttention(
+                num_heads=num_heads, 
+                hidden_dim=hidden_dim,
+                mlp_dim=mlp_dim, 
+                norm_layer=norm_layer,
+                reduce=reduce,
+                dropout=dropout, 
+                need_weights=need_weights,
+                average_attn_weights=average_attn_weights,
+                activation=activation,
+                use_lstm=use_lstm,
+                num_layers=num_layers,
+                num_lstm_layers=num_lstm_layers
+            )
+        if self.direction == "backward":
 
-        )
+            self.local_backward_attention = LocalBackwardTemporalAttention(
+                num_heads=num_heads, 
+                hidden_dim=hidden_dim,
+                mlp_dim=mlp_dim, 
+                norm_layer=norm_layer,
+                reduce=reduce,
+                dropout=dropout, 
+                need_weights=need_weights,
+                average_attn_weights=average_attn_weights,
+                activation=activation,
+                use_lstm=use_lstm,
+                num_layers=num_layers,
+                num_lstm_layers=num_lstm_layers
+
+            )
         
-        self.bidirectional_attention = BidirectionalTemporalAttention(
-            num_heads=num_heads, 
-            hidden_dim=hidden_dim,
-            mlp_dim=mlp_dim, 
-            norm_layer=norm_layer,
-            reduce=reduce,
-            dropout=dropout, 
-            need_weights=need_weights,
-            average_attn_weights=average_attn_weights,
-            activation=activation,
-            use_lstm=use_lstm,
-            num_layers=num_lstm_layers
+        if self.direction == "bidirectional":
+            self.bidirectional_attention = BidirectionalTemporalAttention(
+                num_heads=num_heads, 
+                hidden_dim=hidden_dim,
+                mlp_dim=mlp_dim, 
+                norm_layer=norm_layer,
+                reduce=reduce,
+                dropout=dropout, 
+                need_weights=need_weights,
+                average_attn_weights=average_attn_weights,
+                activation=activation,
+                use_lstm=use_lstm,
+                num_layers=num_layers,
+                num_lstm_layers=num_lstm_layers
 
-        )
+            )
         print("Using LSTM: ", use_lstm)
 
                 
@@ -130,7 +138,7 @@ class TemporalEncoderBlock(nn.Module):
 
         return local_result, states, [attention_weights]
         
-class TemporalEncoderV2(nn.Module):
+class TemporalEncoderV3(nn.Module):
     """ Temporal Encoder for local and global features
     """
     
@@ -146,7 +154,8 @@ class TemporalEncoderV2(nn.Module):
         average_attn_weights: bool=True,
         activation=nn.GELU,
         num_lstm_layers: int=3,
-        use_lstm: bool=False
+        use_lstm: bool=False,
+        num_layers: int=3
         ) -> None:
         """Initialize Temporal Encoder
 
@@ -183,8 +192,9 @@ class TemporalEncoderV2(nn.Module):
                     need_weights=need_weights,
                     average_attn_weights=average_attn_weights,
                     activation=activation,
-                    num_lstm_layers=num_lstm_layers,
-                    use_lstm=use_lstm
+                    use_lstm=use_lstm,
+                    num_layers=num_layers,
+                    num_lstm_layers=num_lstm_layers
                 )
             )
         

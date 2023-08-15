@@ -115,14 +115,14 @@ class PoseEncoderBlock(nn.Module):
         _, num_joints, hidden_dim = pose.shape
         result = None
         attention_weights = None 
-        x0 = self.ln_1(pose)
-        x1, attention_weights = self.self_attention(x0, x0, x0, need_weights=self.need_weights, key_padding_mask=pose_mask)
-        x2 = pose + x1
-        x3 = self.ln_2(x2)
-        x4 = self.mlp(x3)
-        result = x2 + x4
+        attended_pose, attention_weights = self.self_attention(pose, pose, pose, need_weights=self.need_weights, key_padding_mask=pose_mask)
+        attended_pose += pose
+        attended_pose = self.ln_1(attended_pose)
+        attended_pose_mlp = self.mlp(attended_pose)
+        attended_pose_mlp += attended_pose
+        attended_pose_ln = self.ln_2(attended_pose_mlp)
 
-        return result
+        return attended_pose_ln
     
 class PoseEncoder(nn.Module):
     """ Pose Encoder
