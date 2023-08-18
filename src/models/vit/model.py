@@ -83,10 +83,12 @@ class VisionTransformer(nn.Module):
         # # ...
 
         # Load Vit weights
-#         vit_weights = torch.load(ospj(root_path, vit_weights))
-#         self.load_state_dict(vit_weights, strict=True)
+        vit_weights = torch.load(ospj(root_path, vit_weights))
+        self.load_state_dict(vit_weights, strict=True)
         
         del self.encoder.layers[num_layers:]
+        del heads_layers
+        del self.heads
         # print(patch_size)
         
         self.max_pool = nn.MaxPool2d(kernel_size=[patch_size, patch_size], stride=patch_size)

@@ -5,7 +5,7 @@ from typing import Union
 from functools import partial
 
 from models.common.sequential import TemporalMultiInputSequentialV3
-from models.temporal.local_attentionv3 import LocalBackwardTemporalAttention, LocalForwardTemporalAttention, BidirectionalTemporalAttention
+from models.temporal.temporal_attention import LocalBackwardTemporalAttention, LocalForwardTemporalAttention, BidirectionalTemporalAttention
 
       
 class TemporalEncoderBlock(nn.Module):
@@ -26,7 +26,8 @@ class TemporalEncoderBlock(nn.Module):
         activation=nn.GELU,
         num_lstm_layers: int=3,
         use_lstm: bool=False,
-        num_layers: int=3
+        num_layers: int=3,
+        num_query: int=18
     ):
         """Initialize Temporal Encoder Block
 
@@ -65,7 +66,8 @@ class TemporalEncoderBlock(nn.Module):
                 activation=activation,
                 use_lstm=use_lstm,
                 num_layers=num_layers,
-                num_lstm_layers=num_lstm_layers
+                num_lstm_layers=num_lstm_layers,
+                num_query=num_query
             )
         if self.direction == "backward":
 
@@ -81,10 +83,11 @@ class TemporalEncoderBlock(nn.Module):
                 activation=activation,
                 use_lstm=use_lstm,
                 num_layers=num_layers,
-                num_lstm_layers=num_lstm_layers
+                num_lstm_layers=num_lstm_layers,
+                num_query=num_query
 
             )
-        
+
         if self.direction == "bidirectional":
             self.bidirectional_attention = BidirectionalTemporalAttention(
                 num_heads=num_heads, 
@@ -98,9 +101,10 @@ class TemporalEncoderBlock(nn.Module):
                 activation=activation,
                 use_lstm=use_lstm,
                 num_layers=num_layers,
-                num_lstm_layers=num_lstm_layers
+                num_lstm_layers=num_lstm_layers,
+                num_query=num_query
 
-            )
+                )
         print("Using LSTM: ", use_lstm)
 
                 
@@ -136,7 +140,7 @@ class TemporalEncoderBlock(nn.Module):
             local_result, states, attention_weights  = self.bidirectional_attention(feat, mask, forward_states=states, backward_states=states)
 
 
-        return local_result, states, [attention_weights]
+        return local_result, states, attention_weights
         
 class TemporalEncoderV3(nn.Module):
     """ Temporal Encoder for local and global features
@@ -155,7 +159,8 @@ class TemporalEncoderV3(nn.Module):
         activation=nn.GELU,
         num_lstm_layers: int=3,
         use_lstm: bool=False,
-        num_layers: int=3
+        num_layers: int=3,
+        num_query: int=18
         ) -> None:
         """Initialize Temporal Encoder
 
@@ -194,7 +199,8 @@ class TemporalEncoderV3(nn.Module):
                     activation=activation,
                     use_lstm=use_lstm,
                     num_layers=num_layers,
-                    num_lstm_layers=num_lstm_layers
+                    num_lstm_layers=num_lstm_layers,
+                    num_query=num_query
                 )
             )
         

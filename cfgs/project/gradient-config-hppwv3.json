@@ -7,8 +7,8 @@
         "args": {
             "config": {
                 "pose_embedding": {
-                    "pose_sigma": 128,
-                    "root_sigma": 32,
+                    "pose_sigma": 32,
+                    "root_sigma": 16,
                     "nfreq": 64
                 },
                 "pose_encoder": {
@@ -16,14 +16,14 @@
                     "num_heads": 8,
                     "hidden_dim": 256,
                     "mlp_dim": 768,
-                    "dropout": 0.0
+                    "dropout": 0.001
                 },
                 "pose_decoder": {
                     "num_layers": 3,
                     "num_heads": 8,
                     "hidden_dim": 256,
                     "mlp_dim": 768,
-                    "dropout": 0.0,
+                    "dropout": 0.001,
                     "batch_first": true
 
                 },
@@ -35,16 +35,16 @@
                     "directions": ["bidirectional", "forward"],
                     "num_lstm_layers": 1,
                     "use_lstm": false,
-                    "num_layers": 1
+                    "num_layers": 3
 
                 },
                 "image_encoder":{
                     "image_size": 224, 
                     "patch_size": 16,  
-                    "num_layers": 3, 
+                    "num_layers": 4, 
                     "num_heads": 16,  
-                    "hidden_dim": 256,
-                    "mlp_dim": 768,
+                    "hidden_dim": 768,
+                    "mlp_dim": 3072,
                     "total_layers": 12,
                     "vit_weights": "saved/models/vit/vit.pth",
                     "root_path": "/notebooks",
@@ -53,7 +53,7 @@
                 "dual_attention": {
                     "num_heads": 16,
                     "embed_dim": 256,
-                    "dropout": 0.0,
+                    "dropout": 0.001,
                     "batch_first": true
 
                 },

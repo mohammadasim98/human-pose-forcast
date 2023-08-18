@@ -6,7 +6,7 @@ from copy import deepcopy
 from tqdm import tqdm
 
 
-
+import matplotlib.pyplot as plt
 
 from models.hppw.transforms import cvt_relative_pose, cvt_absolute_pose
 from models.embedding.dct import get_dct_matrix
@@ -60,11 +60,13 @@ class HPPW3DTrainerV2(BaseTrainer):
         self.fdct_n = self.dct_config["fdct_n"]
         self.count = 0
         
-    def send_imgs(self, history, future, output2d, qsequence_index, batch_idx, name="val"):
+    def get_imgs(self, history, future, output2d, qsequence_index, batch_idx, name="val", weights=None):
 
 
         imgs = history[0][qsequence_index, -self.history_window:, ...].cpu().numpy()
+        
 
+        
         # (1, S, N, 2)
         hist_pose2d = history[1][qsequence_index, -self.history_window:, :14, :].unsqueeze(0).cpu().numpy()
         hist_root2d = history[2][qsequence_index, -self.history_window:, ...].unsqueeze(0).cpu().numpy()
@@ -104,9 +106,10 @@ class HPPW3DTrainerV2(BaseTrainer):
             annotated_img = annotate_pose_2d(img=imgs[j, ...], pose=hist_pose2d[:, j, ...], color=(255, 0, 0), radius=2, thickness=2, text=False)
             annotated_img = annotate_root_2d(img=annotated_img, root=hist_root2d[:, j, ...], color=(0, 0, 255), thickness=3)
 
-            imgs_list.append(self.wandb.Image(annotated_img.astype(np.uint8)[..., ::-1]))
+            # imgs_list.append(self.wandb.Image(annotated_img.astype(np.uint8)[..., ::-1]))
+            imgs_list.append(np.expand_dims(annotated_img.astype(np.uint8)[..., ::-1], 0))
 
-
+        weights_list = []
         for j in range(pred2d.shape[1]):
 
             curr_img = deepcopy(imgs[-1, ...])
@@ -126,10 +129,31 @@ class HPPW3DTrainerV2(BaseTrainer):
                 annotated_img = annotate_root_2d(img=annotated_img, root=pred_root, color=(255, 0, 255), thickness=3)
             # cv2.imwrite(ospj(folder_path, str(i)+".jpg"), annoted_img)
 
-            imgs_list.append(self.wandb.Image(annotated_img.astype(np.uint8)[..., ::-1]))
+            # imgs_list.append(self.wandb.Image(annotated_img.astype(np.uint8)[..., ::-1]))
+            imgs_list.append(np.expand_dims(annotated_img.astype(np.uint8)[..., ::-1], 0))
+            if weights is not None:
 
+                # weights_list.append(self.wandb.Image((weights[2][j][qsequence_index, 10, 1:].cpu().numpy().reshape(14, 14) * 255).astype(np.uint8)))
+                # weights_list.append(self.wandb.Image((weights[2][j][qsequence_index, 13, 1:].cpu().numpy().reshape(14, 14) * 255).astype(np.uint8)))
+                if weights[2][j].requires_grad:
+                    weights_list.append((weights[2][j][qsequence_index, 10, 1:].cpu().detach().numpy().reshape(1, 14, 14, 1) * 255).astype(np.uint8))
+                    weights_list.append((weights[2][j][qsequence_index, 13, 1:].cpu().detach().numpy().reshape(1, 14, 14, 1) * 255).astype(np.uint8))
+                else:
+                    
+                    weights_list.append((weights[2][j][qsequence_index, 10, 1:].cpu().numpy().reshape(1, 14, 14, 1) * 255).astype(np.uint8))
+                    weights_list.append((weights[2][j][qsequence_index, 13, 1:].cpu().numpy().reshape(1, 14, 14, 1) * 255).astype(np.uint8))
+        # print((weights[2][0][qsequence_index, 0, 1:].cpu().detach().numpy().reshape(14, 14) * 255).astype(np.uint8))            
+        # # print(weights[2][0][qsequence_index, 10, 1:].cpu().detach().numpy().reshape(14, 14))            
+        # plt.imshow((weights[2][0][qsequence_index, 0, 1:].cpu().detach().numpy().reshape(14, 14)), cmap="gray")
+        # self.wandb.log({f"{name}-images_{qsequence_index}_{batch_idx}": imgs_list})
+        i = self.wandb.Video(np.transpose(np.concatenate(imgs_list, axis=0), (0, 3, 1, 2)), fps=4, format="gif")
+        w = None
+        if weights is not None:
+            w = self.wandb.Video(np.transpose(np.concatenate(weights_list, axis=0), (0, 3, 1, 2)), fps=4, format="gif")
+            # self.wandb.log({f"{name}-attentions_{qsequence_index}_{batch_idx}": weights_list})
+        return i, w
 
-        self.wandb.log({f"{name}-images_{qsequence_index}_{batch_idx}": imgs_list})
+            
         
     def _train_epoch(self):
         """
@@ -157,8 +181,11 @@ class HPPW3DTrainerV2(BaseTrainer):
 #             is_teacher_forcing = False
         
         self.logger.debug(f"Teacher Forcing: {is_teacher_forcing} {self.count}")
-
+        running_loss = 0
+        running_vim = 0
         pbar = tqdm(total=len(self._train_loader) * self._train_loader.batch_size, bar_format='{desc}: {percentage:3.0f}% {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+        img_list = []
+        weight_list = []
         for batch_idx, (history, future) in enumerate(self._train_loader):
 
             img_seq = history[0][:, -self.history_window:, ...].float().to(self._device)
@@ -236,7 +263,7 @@ class HPPW3DTrainerV2(BaseTrainer):
                 
 #                 history_poses2d = torch.matmul(dct_m[:dct_n, :], history_poses2d.permute())
 
-            output2d, _ = self.model(
+            output2d, proj_history_poses, weights = self.model(
                 img_seq=img_seq, 
                 history_pose=history_poses2d, 
                 img_mask=history_mask, 
@@ -248,7 +275,7 @@ class HPPW3DTrainerV2(BaseTrainer):
                 future_pose_mask=future_pose_mask
             )                
             
-        
+
             if self.use_dct:
                 dct_m, idct_m = get_dct_matrix(self.future_window)
                 
@@ -271,7 +298,10 @@ class HPPW3DTrainerV2(BaseTrainer):
             pose2d_mask = torch.cat([history_pose_mask, future_pose_mask], dim=1)
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
             loss_2d = self.criterion(output2d, future_poses2d, future_pose_mask)
-            loss = loss_2d
+            # loss_2d_history_proj = self.criterion(proj_history_poses, history_poses2d, history_pose_mask)
+            # loss_2d_history_proj = 0
+            
+            loss = loss_2d 
 
             if self.use_projection:
                 poses3d = torch.cat([history_poses3d, future_poses3d], dim=1) 
@@ -287,8 +317,9 @@ class HPPW3DTrainerV2(BaseTrainer):
             
             loss.backward()
             self.optimizer.step()
-                            
-
+            
+            running_loss += loss.item()
+            
             met2d = None
             met3d = None
             if self.writer is not None: self.writer.set_step((self.current_epoch - 1) * len(self._train_loader) + batch_idx)
@@ -296,6 +327,7 @@ class HPPW3DTrainerV2(BaseTrainer):
             for metric in self.metric_ftns:
                 if str(metric) == "vim2d":
                     met2d = metric.compute(output2d, future_poses2d, self.use_pose_norm, self.use_root_relative)
+                    running_vim += met2d
                     self.epoch_metrics.update(str(metric), met2d.item())
 
                 if str(metric) == "vim3d" and self.use_projection:
@@ -304,10 +336,10 @@ class HPPW3DTrainerV2(BaseTrainer):
             
             if self.use_projection:
                 
-                pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} loss3d: {loss_3d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
+                pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {running_loss/(batch_idx+1):.6f} loss3d: {loss_3d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
             else:
                 
-                pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f}")
+                pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {running_loss/(batch_idx+1):.6f} vim2d: {running_vim/(batch_idx+1)}")
 
             # if batch_idx % self.log_step == 0:
             #     # self.logger.debug('Train Epoch: {} Loss: {:.6f}'.format(self.current_epoch, loss.item()))
@@ -319,13 +351,22 @@ class HPPW3DTrainerV2(BaseTrainer):
             pbar.update(self._train_loader.batch_size)
             
             if self.wandb_enabled:
-
+                
                 if self.current_epoch % 3 == 0:
                     for qsequence_index in self.qsequence_index:
                         for index in self.qbatch_index:
                             if index == batch_idx:
-                                self.send_imgs(history, future, output2d.detach(), qsequence_index, index, "train")
-            
+                                img, weight = self.get_imgs(history, future, output2d.detach(), qsequence_index, index, "train", None)
+                                img_list.append(img)
+                                if weight is not None:
+                                    weight_list.append(weight)
+        if self.wandb_enabled:
+
+            if len(img_list):
+                self.wandb.log({"train_img": img_list})
+
+            if len(weight_list):
+                self.wandb.log({"train_atten_weights": weight_list})
         log_dict = self.epoch_metrics.result()
         pbar.close()
         self.logger.debug(f"==> Finished Epoch {self.current_epoch}/{self.epochs}.")
@@ -344,6 +385,8 @@ class HPPW3DTrainerV2(BaseTrainer):
         if loader is None:
             assert self._eval_loader is not None, 'loader was not given and self._eval_loader not set either!'
             loader = self._eval_loader
+        running_loss = 0
+        running_vim = 0
 
         self.model.eval()
         self.eval_metrics.reset()
@@ -361,7 +404,8 @@ class HPPW3DTrainerV2(BaseTrainer):
         
         hdct_n = self.hdct_n if self.hdct_n <= self.history_window else self.history_window
         fdct_n = self.fdct_n if self.fdct_n <= self.future_window else self.future_window
-        
+        img_list = []
+        weight_list = []
         for batch_idx, (history, future) in enumerate(loader): 
 
 
@@ -438,7 +482,7 @@ class HPPW3DTrainerV2(BaseTrainer):
                 
 #                 history_poses2d = torch.matmul(dct_m[:dct_n, :], history_poses2d.permute())
 
-            output2d, _ = self.model(
+            output2d, proj_history_poses, weights = self.model(
                 img_seq=img_seq, 
                 history_pose=history_poses2d, 
                 img_mask=history_mask, 
@@ -473,8 +517,10 @@ class HPPW3DTrainerV2(BaseTrainer):
             pose2d_mask = torch.cat([history_pose_mask, future_pose_mask], dim=1)
             poses2d = torch.cat([history_poses2d, future_poses2d], dim=1) 
             loss_2d = self.criterion(output2d, future_poses2d, future_pose_mask)
+            # loss_2d_history_proj = self.criterion(proj_history_poses, history_poses2d, history_pose_mask)
+            # loss_2d_history_proj = 0
             loss = loss_2d
-
+            running_loss += loss.item()
             
             if self.use_projection:
                 poses3d = torch.cat([history_poses3d, future_poses3d], dim=1) 
@@ -492,6 +538,7 @@ class HPPW3DTrainerV2(BaseTrainer):
             for metric in self.metric_ftns:
                 if str(metric) == "vim2d":
                     met2d = metric.compute(output2d, future_poses2d, self.use_pose_norm, self.use_root_relative)
+                    running_vim += met2d
                     self.eval_metrics.update(str(metric), met2d.item())
 
                 if str(metric) == "vim3d" and self.use_projection:
@@ -502,7 +549,7 @@ class HPPW3DTrainerV2(BaseTrainer):
                 pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} loss3d: {loss_3d.item():.6f if loss3d is not None else ''} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
             
             else:
-                pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f}")
+                pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {running_loss/(batch_idx+1)}, vim2d: {running_vim/(batch_idx+1)}")
             # if self.writer is not None: self.writer.add_image('input_valid', make_grid(history.cpu(), nrow=8, normalize=True))
             pbar.update(loader.batch_size)
             
@@ -512,8 +559,18 @@ class HPPW3DTrainerV2(BaseTrainer):
                     for qsequence_index in self.qsequence_index:
                         for index in self.qbatch_index:
                             if index == batch_idx:
-                                self.send_imgs(history, future, output2d, qsequence_index, index)
+                                img, weight = self.get_imgs(history, future, output2d, qsequence_index, index, weights=None)
+                                img_list.append(img)
+                                if weight is not None:
+                                    weight_list.append(weight)
+        if self.wandb_enabled:
+
+            if len(img_list):
+                self.wandb.log({"val_img": img_list})
+
+            if len(weight_list):
                 
+                self.wandb.log({"val_atten_weights": weight_list})
         # add histogram of model parameters to the tensorboard
         '''
         Uncommenting the next 3 lines with "tensorboard" set to true in vgg_cifar10_pretrained.json will make the tensorboard file large and training very slow. 
