@@ -102,7 +102,7 @@ class HPPW3DTrainerV2(BaseTrainer):
         imgs_list = []
 
             
-        for j in range(hist_pose2d.shape[1]-1):
+        for j in range(hist_pose2d.shape[1]):
             annotated_img = annotate_pose_2d(img=imgs[j, ...], pose=hist_pose2d[:, j, ...], color=(255, 0, 0), radius=2, thickness=2, text=False)
             annotated_img = annotate_root_2d(img=annotated_img, root=hist_root2d[:, j, ...], color=(0, 0, 255), thickness=3)
 
@@ -110,7 +110,7 @@ class HPPW3DTrainerV2(BaseTrainer):
             imgs_list.append(np.expand_dims(annotated_img.astype(np.uint8)[..., ::-1], 0))
 
         weights_list = []
-        for j in range(pred2d.shape[1]):
+        for j in range(pred2d.shape[1] ):
 
             curr_img = deepcopy(imgs[-1, ...])
             gt_abs_pose = gt_pose2d[:, j, ...]
@@ -131,17 +131,19 @@ class HPPW3DTrainerV2(BaseTrainer):
 
             # imgs_list.append(self.wandb.Image(annotated_img.astype(np.uint8)[..., ::-1]))
             imgs_list.append(np.expand_dims(annotated_img.astype(np.uint8)[..., ::-1], 0))
+            
+        for j in range(len(weights[1])):
             if weights is not None:
 
                 # weights_list.append(self.wandb.Image((weights[2][j][qsequence_index, 10, 1:].cpu().numpy().reshape(14, 14) * 255).astype(np.uint8)))
                 # weights_list.append(self.wandb.Image((weights[2][j][qsequence_index, 13, 1:].cpu().numpy().reshape(14, 14) * 255).astype(np.uint8)))
-                if weights[2][j].requires_grad:
-                    weights_list.append((weights[2][j][qsequence_index, 10, 1:].cpu().detach().numpy().reshape(1, 14, 14, 1) * 255).astype(np.uint8))
-                    weights_list.append((weights[2][j][qsequence_index, 13, 1:].cpu().detach().numpy().reshape(1, 14, 14, 1) * 255).astype(np.uint8))
+                if weights[1][j].requires_grad:
+                    weights_list.append((weights[1][j][qsequence_index, ...].unsqueeze(0).unsqueeze(-1).cpu().detach().numpy() * 255).astype(np.uint8))
+                    weights_list.append((weights[1][j][qsequence_index, ...].unsqueeze(0).unsqueeze(-1).cpu().detach().numpy() * 255).astype(np.uint8))
                 else:
-                    
-                    weights_list.append((weights[2][j][qsequence_index, 10, 1:].cpu().numpy().reshape(1, 14, 14, 1) * 255).astype(np.uint8))
-                    weights_list.append((weights[2][j][qsequence_index, 13, 1:].cpu().numpy().reshape(1, 14, 14, 1) * 255).astype(np.uint8))
+
+                    weights_list.append((weights[1][j][qsequence_index, ...].unsqueeze(0).unsqueeze(-1).cpu().numpy() * 255).astype(np.uint8))
+                    weights_list.append((weights[1][j][qsequence_index, ...].unsqueeze(0).unsqueeze(-1).cpu().numpy() * 255).astype(np.uint8))
         # print((weights[2][0][qsequence_index, 0, 1:].cpu().detach().numpy().reshape(14, 14) * 255).astype(np.uint8))            
         # # print(weights[2][0][qsequence_index, 10, 1:].cpu().detach().numpy().reshape(14, 14))            
         # plt.imshow((weights[2][0][qsequence_index, 0, 1:].cpu().detach().numpy().reshape(14, 14)), cmap="gray")
@@ -339,7 +341,7 @@ class HPPW3DTrainerV2(BaseTrainer):
                 pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {running_loss/(batch_idx+1):.6f} loss3d: {loss_3d.item():.6f} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
             else:
                 
-                pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {running_loss/(batch_idx+1):.6f} vim2d: {running_vim/(batch_idx+1)}")
+                pbar.set_description(f"Train epoch: {self.current_epoch} loss2d: {running_loss/(batch_idx+1):.6f} vim2d: {running_vim/(batch_idx+1):.6f}")
 
             # if batch_idx % self.log_step == 0:
             #     # self.logger.debug('Train Epoch: {} Loss: {:.6f}'.format(self.current_epoch, loss.item()))
@@ -356,7 +358,7 @@ class HPPW3DTrainerV2(BaseTrainer):
                     for qsequence_index in self.qsequence_index:
                         for index in self.qbatch_index:
                             if index == batch_idx:
-                                img, weight = self.get_imgs(history, future, output2d.detach(), qsequence_index, index, "train", None)
+                                img, weight = self.get_imgs(history, future, output2d.detach(), qsequence_index, index, "train", weights)
                                 img_list.append(img)
                                 if weight is not None:
                                     weight_list.append(weight)
@@ -494,7 +496,6 @@ class HPPW3DTrainerV2(BaseTrainer):
                 future_pose_mask=None
             )                
             
-        
             if self.use_dct:
                 dct_m, idct_m = get_dct_matrix(self.future_window)
                 
@@ -549,7 +550,7 @@ class HPPW3DTrainerV2(BaseTrainer):
                 pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {loss_2d.item():.6f} loss3d: {loss_3d.item():.6f if loss3d is not None else ''} vim2d: {met2d.item() if met2d is not None else None:.5f} vim3d: {met3d.item() if met3d is not None else None:.4f}")
             
             else:
-                pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {running_loss/(batch_idx+1)}, vim2d: {running_vim/(batch_idx+1)}")
+                pbar.set_description(f"Eval epoch: {self.current_epoch} loss2d: {running_loss/(batch_idx+1):.6f}, vim2d: {running_vim/(batch_idx+1):.6f}")
             # if self.writer is not None: self.writer.add_image('input_valid', make_grid(history.cpu(), nrow=8, normalize=True))
             pbar.update(loader.batch_size)
             
@@ -559,7 +560,7 @@ class HPPW3DTrainerV2(BaseTrainer):
                     for qsequence_index in self.qsequence_index:
                         for index in self.qbatch_index:
                             if index == batch_idx:
-                                img, weight = self.get_imgs(history, future, output2d, qsequence_index, index, weights=None)
+                                img, weight = self.get_imgs(history, future, output2d, qsequence_index, index, weights=weights)
                                 img_list.append(img)
                                 if weight is not None:
                                     weight_list.append(weight)

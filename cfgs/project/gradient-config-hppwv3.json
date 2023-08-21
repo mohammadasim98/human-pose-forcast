@@ -7,12 +7,12 @@
         "args": {
             "config": {
                 "pose_embedding": {
-                    "pose_sigma": 32,
-                    "root_sigma": 16,
+                    "pose_sigma": 64,
+                    "root_sigma": 32,
                     "nfreq": 64
                 },
                 "pose_encoder": {
-                    "num_layers": 3,
+                    "num_layers": 1,
                     "num_heads": 8,
                     "hidden_dim": 256,
                     "mlp_dim": 768,
@@ -35,7 +35,7 @@
                     "directions": ["bidirectional", "forward"],
                     "num_lstm_layers": 1,
                     "use_lstm": false,
-                    "num_layers": 3
+                    "num_layers": 1
 
                 },
                 "image_encoder":{
@@ -136,7 +136,7 @@
     "optimizer": {
         "type": "Adam",
         "args":{
-            "lr": 0.00001,
+            "lr": 0.0001,
             "amsgrad": true
         }
     },
@@ -167,7 +167,7 @@
         "type": "HPPW3DTrainerV2",
         "args": {},
 
-        "epochs": 60,
+        "epochs": 200,
         "save_dir": "/notebooks/saved/",
         "save_period": 2,
         "eval_period": 1,

@@ -199,8 +199,8 @@ class LocalForwardTemporalAttention(nn.Module):
             if self.use_lstm:
                 attended_value, states = self.lstm(attended_value, states)
             
-            # query = self.res_ln(attended_value + key_value)
-            query = attended_value
+            query = self.res_ln(attended_value + key_value)
+            # query = attended_value
             
             # Append attended queries
             attended_values.append(query.unsqueeze(1))
@@ -371,15 +371,15 @@ class LocalBackwardTemporalAttention(nn.Module):
             if self.use_lstm:
                 attended_value, states = self.lstm(attended_value, states)
 
-            # query = self.res_ln(attended_value + key_value)
-            query = attended_value
+            query = self.res_ln(attended_value + key_value)
+            # query = attended_value
             # Append attended queries
             attended_values.append(query.unsqueeze(1))
             if len(att_weights):
                 attention_weights.append(att_weights)
             
         if len(attention_weights):
-            attention_weights = torch.cat(attention_weights, dim=0)
+            attention_weights = attention_weights
         else:
             attention_weights = None
 
@@ -599,11 +599,11 @@ class BidirectionalTemporalAttention(nn.Module):
             # Update query
             
 
-            # query_forward = self.res_ln_forward(forward_attended_value + key_value_forward)
-            # query_backward = self.res_ln_backward(backward_attended_value + key_value_backward)
+            query_forward = self.res_ln_forward(forward_attended_value + key_value_forward)
+            query_backward = self.res_ln_backward(backward_attended_value + key_value_backward)
             
-            query_forward = forward_attended_value
-            query_backward = backward_attended_value
+            # query_forward = forward_attended_value
+            # query_backward = backward_attended_value
             # query = torch.cat([query_forward, query_backward], dim=-1)
             # Append attended queries
             forward_attended_values.append(query_forward.unsqueeze(1))
@@ -647,3 +647,338 @@ class BidirectionalTemporalAttention(nn.Module):
                 
         
         return result_ln, None, attention_weights
+    
+    
+    
+    
+    
+class GatedRecurrentAttentionUnitEncoder(nn.Module):
+    """ GRAU Encoder
+    """
+
+    def __init__(
+        self,
+        num_heads: int,
+        hidden_dim: int,
+        mlp_dim: int,
+        reduce: bool=False,
+        norm_layer = partial(nn.LayerNorm, eps=1e-6),
+        dropout: float=0.0,
+        need_weights: bool=False,
+        average_attn_weights: bool=True,
+        activation=nn.GELU,
+        num_layers: int=1,
+        use_lstm: bool=False,
+        num_lstm_layers: int=3,
+        num_query: int=18
+    ) -> None:
+        """Initialize Local Backward Temporal Encoder
+
+        Args:
+            num_heads (int): Number of heads for the temporal attention module
+            hidden_dim (int): Hidden dimension for the temporal attention module
+            mlp_dim (int): MLP dimension for the temporal attention module
+            norm_layer (torch.nn.Module, optional): Layer norm after temporal attention. 
+                Defaults to partial(nn.LayerNorm, eps=1e-6).
+            dropout (float, optional): Dropout probability. Defaults to 0.0.
+            need_weights (bool, optional): If true, return attention weights (not configured for now). 
+                Defaults to False.
+            reduce (bool, optional): If true, return the propagated attended values. Else return all the attented values. 
+                Defaults to False.  
+        """
+        super().__init__()
+        self.num_heads = num_heads
+        self.reduce = reduce
+        self.attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads, dropout=dropout, batch_first=True)
+
+        
+        self.need_weights = need_weights
+        self.average_attn_weights = average_attn_weights
+        
+        # MLP block
+        self.ln_2 = norm_layer(hidden_dim)
+        self.mlp = MLPBlock(hidden_dim, mlp_dim, activation=activation) 
+        
+        if use_lstm:
+            self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_lstm_layers, batch_first=True)        
+        
+        self.use_lstm = use_lstm
+        self.res_ln = norm_layer(hidden_dim)
+        self.query = nn.Parameter(torch.randn(1, num_query, hidden_dim))
+        self.query_mask = torch.zeros(1, num_query).bool().to("cuda:0")
+        
+        
+        # self.mlp_xz = MLPBlock(hidden_dim, mlp_dim)
+        # self.mlp_xr = MLPBlock(hidden_dim, mlp_dim)
+        # self.mlp_hz = MLPBlock(hidden_dim, mlp_dim)
+        # self.mlp_hr = MLPBlock(hidden_dim, mlp_dim)
+        # self.mlp_hn = MLPBlock(hidden_dim, mlp_dim)
+        
+        self.mlp_xz = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.mlp_xr = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.mlp_hz = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.mlp_hr = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.mlp_hn = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.mlp_an = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
+        
+    def forward(self, inputs: torch.Tensor, mask: Union[torch.Tensor, None]=None, query: Union[torch.Tensor, None]=None):
+        """Perform forward pass
+
+        Args:
+            inputs (torch.Tensor): A (B, Hw, Nf, E) tensor with Hw as the history 
+                window, Nf as the number of local features and E as the embedding/hidden
+                feature dimension.
+
+        Returns:
+            result (torch.Tensor): A (B, Hw', Nf, E) tensor if reduce is False else a (B, Nf, E) tensor.
+        """
+        torch._assert(inputs.dim() == 4, f"Expected Local Features of shape \
+            (batch_size, seq_length, num_feature, hidden_dim) got {inputs.shape}")
+
+        
+        #######################################################################################
+        # TODO: Need to implement a forward method for local backward temporal attention block
+        b, w, nf, e = inputs.shape
+        # Temporal attention on local features
+        attended_values = []
+        attention_weights = []
+        # Use oldest feature sequence from history as the first query
+        if query is None:
+            hidden_value = self.query.expand(b, -1, -1) 
+        else:
+            hidden_value = query
+            
+        query = hidden_value
+        hidden_value_mask = self.query_mask.expand(b, -1) 
+        # attended_values.append(query.unsqueeze(1))
+        # query_ln = self.ln_q(query)
+        inp_cat = torch.cat([hidden_value.unsqueeze(1), inputs], dim=1)
+        att_weights = None
+        for i in range(0, w):
+            # Update key and value
+            key_value = inputs[:, i, :, :]
+            key_value_cat = torch.cat([key_value, hidden_value], dim=1)
+            z = self.sigmoid(self.mlp_xz(key_value) + self.mlp_hz(hidden_value))
+            r = self.sigmoid(self.mlp_xr(key_value) + self.mlp_hr(hidden_value))
+            
+            attended_value, att_weights = self.attention(
+                hidden_value, 
+                key_value_cat, 
+                key_value_cat, 
+                need_weights=True, 
+                average_attn_weights=True,
+                key_padding_mask=torch.cat([mask[:, i, :], hidden_value_mask], dim=1) if mask is not None and i < mask.shape[1] else None
+            )
+            
+            n = self.tanh(self.mlp_an(attended_value) + r * self.mlp_hn(hidden_value))
+
+            
+            hidden_value = (1 - z) * n + z * hidden_value
+            # query = attended_value
+            # Append attended queries
+            
+            attended_values.append(hidden_value.unsqueeze(1))
+            attention_weights.append(att_weights)
+            
+        if len(attention_weights):
+            attention_weights = attention_weights
+        else:
+            attention_weights = None
+
+
+        return hidden_value, torch.cat(attended_values, dim=1), query, attention_weights
+    
+    
+    
+    
+    
+    
+
+    
+class GatedRecurrentAttentionUnitDecoder(nn.Module):
+    """ GRAU Decoder
+    """
+
+    def __init__(
+        self,
+        num_heads: int,
+        hidden_dim: int,
+        mlp_dim: int,
+        reduce: bool=False,
+        norm_layer = partial(nn.LayerNorm, eps=1e-6),
+        dropout: float=0.0,
+        need_weights: bool=False,
+        average_attn_weights: bool=True,
+        activation=nn.GELU,
+        num_layers: int=1,
+        use_lstm: bool=False,
+        num_lstm_layers: int=3,
+        num_query: int=18
+    ) -> None:
+        """Initialize Local Backward Temporal Encoder
+
+        Args:
+            num_heads (int): Number of heads for the temporal attention module
+            hidden_dim (int): Hidden dimension for the temporal attention module
+            mlp_dim (int): MLP dimension for the temporal attention module
+            norm_layer (torch.nn.Module, optional): Layer norm after temporal attention. 
+                Defaults to partial(nn.LayerNorm, eps=1e-6).
+            dropout (float, optional): Dropout probability. Defaults to 0.0.
+            need_weights (bool, optional): If true, return attention weights (not configured for now). 
+                Defaults to False.
+            reduce (bool, optional): If true, return the propagated attended values. Else return all the attented values. 
+                Defaults to False.  
+        """
+        super().__init__()
+        self.num_heads = num_heads
+        self.reduce = reduce
+        self.attention = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads, dropout=dropout, batch_first=True)
+
+        
+        self.need_weights = need_weights
+        self.average_attn_weights = average_attn_weights
+        
+        # MLP block
+        self.ln_2 = norm_layer(hidden_dim)
+        self.mlp = MLPBlock(hidden_dim, mlp_dim) 
+        
+        if use_lstm:
+            self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_lstm_layers, batch_first=True)        
+        
+        self.use_lstm = use_lstm
+        self.res_ln = norm_layer(hidden_dim)
+        self.query = nn.Parameter(torch.randn(1, num_query, hidden_dim))
+        self.query_mask = torch.zeros(1, num_query).bool().to("cuda:0")
+        
+        
+        # self.mlp_xz = MLPBlock(hidden_dim, mlp_dim)
+        # self.mlp_xr = MLPBlock(hidden_dim, mlp_dim)
+        # self.mlp_hz = MLPBlock(hidden_dim, mlp_dim)
+        # self.mlp_hr = MLPBlock(hidden_dim, mlp_dim)
+        # self.mlp_hn = MLPBlock(hidden_dim, mlp_dim)
+        
+        self.mlp_xz = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.mlp_xr = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.mlp_hz = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.mlp_hr = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.mlp_hn = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.mlp_an = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim)
+        )
+        
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
+        
+        
+    def forward(self, inputs: torch.Tensor, mask: Union[torch.Tensor, None]=None, query: Union[torch.Tensor, None]=None, window: int=10):
+        """Perform forward pass
+
+        Args:
+            inputs (torch.Tensor): A (B, Hw, Nf, E) tensor with Hw as the history 
+                window, Nf as the number of local features and E as the embedding/hidden
+                feature dimension.
+
+        Returns:
+            result (torch.Tensor): A (B, Hw', Nf, E) tensor if reduce is False else a (B, Nf, E) tensor.
+        """
+        torch._assert(inputs.dim() == 3, f"Expected Local Features of shape \
+            (batch_size, seq_length, num_feature, hidden_dim) got {inputs.shape}")
+
+        
+        #######################################################################################
+        # TODO: Need to implement a forward method for local backward temporal attention block
+        b,  nf, e = inputs.shape
+        # Temporal attention on local features
+        outputs = []
+        attention_weights = []
+        # Use oldest feature sequence from history as the first query
+        hidden_value = self.query.expand(b, -1, -1) 
+
+            
+        query = hidden_value
+        hidden_value_mask = self.query_mask.expand(b, -1) 
+        # attended_values.append(query.unsqueeze(1))
+        # query_ln = self.ln_q(query)
+        # inp_cat = torch.cat([hidden_value.unsqueeze(1), inputs], dim=1)
+        key_value = inputs
+
+        att_weights = None
+        for i in range(0, window):
+            # Update key and value
+            z = self.sigmoid(self.mlp_xz(key_value) + self.mlp_hz(hidden_value))
+            r = self.sigmoid(self.mlp_xr(key_value) + self.mlp_hr(hidden_value))
+            
+            attended_value, att_weights = self.attention(
+                hidden_value, 
+                key_value, 
+                key_value, 
+                need_weights=True, 
+                average_attn_weights=True
+            )
+            
+            n = self.tanh(self.mlp_an(attended_value) + r * self.mlp_hn(hidden_value))
+
+            
+            hidden_value = (1 - z) * n + z * hidden_value
+            key_value = self.mlp(hidden_value)
+            key_value = self.tanh(key_value)
+            # query = attended_value
+            # Append attended queries
+            
+            outputs.append(key_value.unsqueeze(1))
+            attention_weights.append(att_weights)
+            
+        if len(attention_weights):
+            attention_weights = attention_weights
+        else:
+            attention_weights = None
+
+
+        return hidden_value, torch.cat(outputs, dim=1), query, attention_weights
