@@ -652,7 +652,7 @@ class BidirectionalTemporalAttention(nn.Module):
     
     
     
-class GatedRecurrentAttentionUnitEncoder(nn.Module):
+class GatedRecurrentAttentionUnit(nn.Module):
     """ GRAU Encoder
     """
 
@@ -821,8 +821,8 @@ class GatedRecurrentAttentionUnitEncoder(nn.Module):
     
 
     
-class GatedRecurrentAttentionUnitDecoder(nn.Module):
-    """ GRAU Decoder
+class VariationalRecurrentAttentionUnit(nn.Module):
+    """ VRAU Decoder
     """
 
     def __init__(
@@ -916,6 +916,21 @@ class GatedRecurrentAttentionUnitDecoder(nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.tanh = nn.Tanh()
         
+        self.mlp_mu = nn.Linear(hidden_dim, 64)
+        self.mlp_sigma = nn.Linear(hidden_dim, 64)
+        self.mlp_out = nn.Linear(64, hidden_dim)
+    
+    def reparameterize(self, mu: Tensor, sigma: Tensor) -> Tensor:
+        """
+        Reparameterization trick to sample from N(mu, var) from
+        N(0,1).
+        :param mu: (Tensor) Mean of the latent Gaussian [B x D]
+        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
+        :return: (Tensor) [B x D]
+        """
+        std = torch.exp(0.5 * sigma)
+        eps = torch.randn_like(std)
+        return eps * std + mu
         
     def forward(self, inputs: torch.Tensor, mask: Union[torch.Tensor, None]=None, query: Union[torch.Tensor, None]=None, window: int=10):
         """Perform forward pass
@@ -967,10 +982,15 @@ class GatedRecurrentAttentionUnitDecoder(nn.Module):
 
             
             hidden_value = (1 - z) * n + z * hidden_value
-            key_value = self.mlp(hidden_value)
-            key_value = self.tanh(key_value)
-            # query = attended_value
-            # Append attended queries
+            
+            
+            mu = sel.mlp_mu(hidden_value) 
+            sigma = sel.mlp_sigma(hidden_value) 
+            
+            new = reparameterize(mu, sigma)
+            
+            key_value = self.mlp_out(new)
+
             
             outputs.append(key_value.unsqueeze(1))
             attention_weights.append(att_weights)
