@@ -11,7 +11,7 @@ from models.temporal.encoderv3 import TemporalEncoderV3
 from models.vit.model import VisionTransformer
 from models.embedding.fourier import FourierEncoding, FourierMLPEncoding
 from models.projection.model import LinearProjection
-from models.temporal.temporal_attention import GatedRecurrentAttentionUnitEncoder, GatedRecurrentAttentionUnitDecoder
+from models.temporal.temporal_attention import GatedRecurrentAttentionUnit, VariationalRecurrentAttentionUnit
 from models.vit.mlp import MLPBlock 
 
 class PositionalEncoding(nn.Module):
@@ -69,14 +69,14 @@ class HumanPosePredictorModelV3(nn.Module):
         self.pose_embedding_args = config["pose_embedding"]
         # Our method's building blocks
         self.pose_encoder = PoseEncoderV2(**self.pose_encoder_args, activation=nn.Tanh)
-        self.image_encoder = VisionTransformer(**self.image_encoder_args, activation=activation)
+        # self.image_encoder = VisionTransformer(**self.image_encoder_args, activation=activation)
         # print(self.image_encoder_args["patch_size"])
         # for param in self.image_encoder.parameters():
         #     param.requires_grad = False
 
-        self.im_temporal_encoder = TemporalEncoderV3(**self.temporal_encoder_args, activation=activation, num_query=((self.image_encoder_args["image_size"] // self.image_encoder_args["patch_size"])**2 + 1))
-        self.pose_temporal_encoder = TemporalEncoderV3(**self.temporal_encoder_args, activation=nn.Tanh, num_query=15)
-        self.dual_attention = nn.MultiheadAttention(**config["dual_attention"])
+        # self.im_temporal_encoder = TemporalEncoderV3(**self.temporal_encoder_args, activation=activation, num_query=((self.image_encoder_args["image_size"] // self.image_encoder_args["patch_size"])**2 + 1))
+        # self.pose_temporal_encoder = TemporalEncoderV3(**self.temporal_encoder_args, activation=nn.Tanh, num_query=15)
+        # self.dual_attention = nn.MultiheadAttention(**config["dual_attention"])
         
         hidden_dim = self.pose_decoder_args["hidden_dim"]
         num_heads = self.pose_decoder_args["num_heads"]
@@ -86,35 +86,42 @@ class HumanPosePredictorModelV3(nn.Module):
         dim_feedforward = self.pose_decoder_args["mlp_dim"]
 
 
-        self.decoder_layer = nn.TransformerDecoderLayer(d_model=hidden_dim, nhead=num_heads, dim_feedforward=dim_feedforward, dropout=dropout, activation=nn.Tanh(), batch_first=batch_first)
-        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers)
+        # self.decoder_layer = nn.TransformerDecoderLayer(d_model=hidden_dim, nhead=num_heads, dim_feedforward=dim_feedforward, dropout=dropout, activation=nn.Tanh(), batch_first=batch_first)
+        # self.decoder = nn.TransformerDecoder(self.decoder_layer, num_layers)
 
         self.pose_emb_dim = self.pose_encoder_args["hidden_dim"]
         self.pose_embedding = rff.layers.PositionalEncoding(sigma=self.pose_embedding_args["pose_sigma"], m=self.pose_embedding_args["nfreq"])
         self.root_embedding = rff.layers.PositionalEncoding(sigma=self.pose_embedding_args["root_sigma"], m=self.pose_embedding_args["nfreq"])
         # self.pose_embedding = FourierMLPEncoding(num_freq=self.pose_embedding_args["nfreq"], d_model=self.pose_embedding_args["embed_dim"], n_input_dim=self.pose_emb_dim, activation=activation)
+        self.output_proj_mus = nn.Sequential(
+            nn.Linear(hidden_dim//2, hidden_dim//4),
+            nn.Linear(hidden_dim//4, 2)
+        )
         
-        self.output_proj = nn.Linear(self.pose_emb_dim, 2)
+        self.output_proj_sigmas = nn.Sequential(
+            nn.Linear(hidden_dim//2, hidden_dim//4),
+            nn.Linear(hidden_dim//4, 2)
+        )
         
         self.embed_proj = nn.Linear(2, int(self.pose_emb_dim / (self.pose_embedding_args["nfreq"] * 2)))
         # self.embed_proj = nn.Linear(2, self.pose_embedding_args["pose_sigma"])
         # self.embed_proj = nn.Linear(2, 256)
 
         self.device = config["device"]
-        self.activation = nn.Tanh()
+        # self.activation = nn.Tanh()
         
         self.need_weights = False
-        self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_layers, batch_first=True)
-        self.img_feat_proj = nn.Linear(self.image_encoder_args["hidden_dim"], self.pose_encoder_args["hidden_dim"])
+        # self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_layers, batch_first=True)
+        # self.img_feat_proj = nn.Linear(self.image_encoder_args["hidden_dim"], self.pose_encoder_args["hidden_dim"])
         
-        self.img_proj = nn.Linear(self.pose_encoder_args["hidden_dim"] * ((self.image_encoder_args["image_size"] // self.image_encoder_args["patch_size"])**2 + 1), 2 * 15)
+        # self.img_proj = nn.Linear(self.pose_encoder_args["hidden_dim"] * ((self.image_encoder_args["image_size"] // self.image_encoder_args["patch_size"])**2 + 1), 2 * 15)
 #         self.pos_seq_emb = PositionalEncoding(self.pose_embedding_args["root_sigma"], 0.0)
 #         self.pos_seq_emb_proj = nn.Linear(self.pose_embedding_args["root_sigma"], self.pose_emb_dim)
         
 #         self.pos_joint_emb = PositionalEncoding(self.pose_embedding_args["pose_sigma"], 0.0)
 #         self.pos_joint_emb_proj = nn.Linear(self.pose_embedding_args["pose_sigma"], self.pose_embedding_args["root_sigma"])
         
-        self.grau_encoder = GatedRecurrentAttentionUnitEncoder(
+        self.grau1 = GatedRecurrentAttentionUnit(
                 num_heads=16, 
                 hidden_dim=hidden_dim,
                 mlp_dim=768, 
@@ -123,8 +130,17 @@ class HumanPosePredictorModelV3(nn.Module):
                 average_attn_weights=True,
                 num_query=15
         )
+        # self.grau2 = GatedRecurrentAttentionUnit(
+        #         num_heads=16, 
+        #         hidden_dim=hidden_dim,
+        #         mlp_dim=768, 
+        #         dropout=0.001, 
+        #         need_weights=True,
+        #         average_attn_weights=True,
+        #         num_query=15
+        # )
         
-        self.grau_decoder = GatedRecurrentAttentionUnitDecoder(
+        self.vrau = VariationalRecurrentAttentionUnit(
                 num_heads=16, 
                 hidden_dim=hidden_dim,
                 mlp_dim=768, 
@@ -187,20 +203,20 @@ class HumanPosePredictorModelV3(nn.Module):
         poses = poses.permute(1, 0, 2, 3).contiguous()
         poses = self.pose_proj_mlp(poses)
         
-#         poses = poses.view(-1, num_joints,  self.pose_emb_dim)
+        poses = poses.view(-1, num_joints,  self.pose_emb_dim)
         
-#         if pose_mask is not None:
-#             pose_mask = pose_mask.view(-1, num_joints)
+        if pose_mask is not None:
+            pose_mask = pose_mask.view(-1, num_joints)
 
-#         # Out Shape: (batch_size*sequence_length, num_joints, E) and (batch_size*sequence_length, E)
-#         encoded_poses = self.pose_encoder(poses=poses, pose_mask=pose_mask)
+        # Out Shape: (batch_size*sequence_length, num_joints, E) and (batch_size*sequence_length, E)
+        poses = self.pose_encoder(poses=poses, pose_mask=pose_mask)
 
-#         # Out Shape: (batch_size, sequence_length, num_joints, E) and (batch_size, sequence_length, E)
-#         encoded_poses = encoded_poses.view(-1, sequence_length, num_joints, self.pose_emb_dim)
+        # Out Shape: (batch_size, sequence_length, num_joints, E) and (batch_size, sequence_length, E)
+        poses = poses.view(-1, sequence_length, num_joints, self.pose_emb_dim)
 
-#         if pose_mask is not None:
+        if pose_mask is not None:
 
-#             pose_mask = pose_mask.view((-1, sequence_length, num_joints))
+            pose_mask = pose_mask.view((-1, sequence_length, num_joints))
 
         return poses
         
@@ -254,7 +270,20 @@ class HumanPosePredictorModelV3(nn.Module):
         # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
         
         return memory_temp, im_mask, proj_history_poses, attention_weights
-        
+    
+    def reparameterize(self, mu: torch.Tensor, sigma: torch.Tensor, eps: Union[torch.Tensor, None]=None) -> torch.Tensor:
+        """
+        Reparameterization trick to sample from N(mu, var) from
+        N(0,1).
+        :param mu: (Tensor) Mean of the latent Gaussian [B x D]
+        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
+        :return: (Tensor) [B x D]
+        """
+        std = torch.exp(0.5 * sigma)
+        if eps is None:
+            eps = torch.randn_like(std)
+        return eps * std + mu
+    
     def forward(
         self, 
         img_seq: torch.Tensor, 
@@ -331,10 +360,10 @@ class HumanPosePredictorModelV3(nn.Module):
         
         
         # History
-#         pose_encoding = self.pose_encoding(
-#             poses=prev_result, 
-#             pose_mask=history_pose_mask if history_pose_mask is not None else None
-#         )
+        # pose_encoding = self.pose_encoding(
+        #     poses=prev_result, 
+        #     pose_mask=history_pose_mask if history_pose_mask is not None else None
+        # )
         pose_encoding = self.pose_encoding(
             poses=poses, 
             pose_mask=pose_mask if pose_mask is not None else None
@@ -344,71 +373,77 @@ class HumanPosePredictorModelV3(nn.Module):
         mask=None
         dual_attention_weights = None
         # memory_pose, temp_states, pose_attentions = self.pose_temporal_encoder(pose_encoding[:, :history_window], mask=history_pose_mask, states=temp_states)
-        memory_pose, memory_poses, query, pose_attentions = self.grau_encoder(pose_encoding[:, :history_window], mask=history_pose_mask if pose_mask is not None else None, query=None)
+        memory_pose1, key_value, memory_poses, query, mu, sigma, pose_attentions = self.grau1(pose_encoding[:, :history_window], mask=history_pose_mask if pose_mask is not None else None, query=None)
+        # memory_pose2, key_value, memory_poses, query, mu, sigma, pose_attentions = self.grau2(memory_poses, mask=None, query=None)
+        hidden, out_dists, query, out_mus, out_sigmas, pose_attentions = self.vrau(hidden=memory_pose1, key_value=key_value, mask=None, query=None)
         
-        encoded_poses = memory_pose.unsqueeze(1)
-        pose_atten_list = []
-        
+        # encoded_poses = memory_pose.unsqueeze(1)
+        # pose_atten_list = []
+        mus = torch.cat([mu.unsqueeze(1), out_mus], dim=1)
+        sigmas = torch.cat([sigma.unsqueeze(1), out_sigmas], dim=1)
         # memory_pose, memory_poses, query, pose_attentions = self.grau_decoder(memory_pose, query=query)
-        for i in range(0, future_window):
+#         for i in range(0, future_window):
             
             
-            memory_pose, memory_poses, query, pose_attentions = self.grau_encoder(encoded_poses)
-            pose_atten_list.append(pose_attentions[-1])
+#             memory_pose, memory_poses, query, pose_attentions = self.grau_encoder(encoded_poses)
+#             pose_atten_list.append(pose_attentions[-1])
 
-            encoded_poses = torch.cat([encoded_poses, memory_pose.unsqueeze(1)], dim=1)
-# #             memory, dual_attention_weight = self.dual_attention(
-# #                 query=memory_pose, 
-# #                 key=memory_img, 
-# #                 value=memory_img, 
-# #                 need_weights=True,
-# #                 average_attn_weights=True,
-# #                 key_padding_mask=img_mask[:, -1, ...] if img_mask is not None else None
-# #             )
+#             encoded_poses = torch.cat([encoded_poses, memory_pose.unsqueeze(1)], dim=1)
+# # #             memory, dual_attention_weight = self.dual_attention(
+# # #                 query=memory_pose, 
+# # #                 key=memory_img, 
+# # #                 value=memory_img, 
+# # #                 need_weights=True,
+# # #                 average_attn_weights=True,
+# # #                 key_padding_mask=img_mask[:, -1, ...] if img_mask is not None else None
+# # #             )
             
-# #             memory = memory + memory_pose
-# #             if True:
-# #                 dual_attention_weights.append(dual_attention_weight)
-# #             # memory, mem_state = self.lstm(memory, mem_states)
+# # #             memory = memory + memory_pose
+# # #             if True:
+# # #                 dual_attention_weights.append(dual_attention_weight)
+# # #             # memory, mem_state = self.lstm(memory, mem_states)
 
             
-# #             result = self.decoder_layer(tgt=pose_encoding[:, -1, ...], memory=memory, tgt_key_padding_mask=mask.squeeze(1) if mask is not None else None, 
-# #                                        memory_key_padding_mask=mask.squeeze(1) if mask is not None else None)
+# # #             result = self.decoder_layer(tgt=pose_encoding[:, -1, ...], memory=memory, tgt_key_padding_mask=mask.squeeze(1) if mask is not None else None, 
+# # #                                        memory_key_padding_mask=mask.squeeze(1) if mask is not None else None)
             
-#             # (B, J, 2)
-#             # result = self.output_proj(memory_pose)
-#             # prev = future_pose[:, i, ...] if is_teacher_forcing else result
-#             # prev = result
-#             # (B, N, J, E)
-#             # Newly generated poses
+# #             # (B, J, 2)
+# #             # result = self.output_proj(memory_pose)
+# #             # prev = future_pose[:, i, ...] if is_teacher_forcing else result
+# #             # prev = result
+# #             # (B, N, J, E)
+# #             # Newly generated poses
             
 
                 
-# #             if future_pose_mask is not None and is_teacher_forcing:
-# #                 mask = future_pose_mask[:, i, ...].unsqueeze(1) 
+# # #             if future_pose_mask is not None and is_teacher_forcing:
+# # #                 mask = future_pose_mask[:, i, ...].unsqueeze(1) 
             
-# #             else:
-# #                 mask = None
+# # #             else:
+# # #                 mask = None
                 
-# #             pose_encoding = self.pose_encoding(
-# #                 poses=future_pose[:, i, ...].unsqueeze(1) if is_teacher_forcing else result.unsqueeze(1), 
-# #                 pose_mask=mask
-# #             )
+# # #             pose_encoding = self.pose_encoding(
+# # #                 poses=future_pose[:, i, ...].unsqueeze(1) if is_teacher_forcing else result.unsqueeze(1), 
+# # #                 pose_mask=mask
+# # #             )
             
-# #             encoded_poses = torch.cat([encoded_poses, pose_encoding], dim=1)
+# # #             encoded_poses = torch.cat([encoded_poses, pose_encoding], dim=1)
             
-#             # final.append(result.unsqueeze(1))
+# #             # final.append(result.unsqueeze(1))
         
-            final.append(memory_pose.unsqueeze(1))
+#             final.append(memory_pose.unsqueeze(1))
         
-        if len(final):
-            final = torch.cat(final, dim=1)
-            final = self.output_proj(final)
-        # final = self.output_proj(memory_poses)
+        # if len(final):
+        #     final = torch.cat(final, dim=1)
+        #     final = self.output_proj(final)
+        
+        final_mus = self.output_proj_mus(out_mus)
+        final_sigmas = self.output_proj_mus(out_sigmas)
+        final = self.reparameterize(final_mus, final_sigmas)
         # Autoregressive decoder with "dual" conditioning
         # Currently uses only combined local and global features. Need to modify it later for further evaluation.
         # Out Shape: (B, future_window + 1, J, 2)
         
 
-        return final, proj_history_poses, [image_attentions, pose_attentions, dual_attention_weights]
+        return final, proj_history_poses, mus, sigmas, final_mus, final_sigmas, [image_attentions, pose_attentions, dual_attention_weights]
     

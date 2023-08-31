@@ -134,10 +134,9 @@
         "duration": 3
     },
     "optimizer": {
-        "type": "Adam",
+        "type": "SGD",
         "args":{
-            "lr": 0.0001,
-            "amsgrad": true
+            "lr": 0.0001
         }
     },
     "loss": {

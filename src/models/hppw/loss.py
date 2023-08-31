@@ -578,10 +578,30 @@ def angular_loss(norm_direc_pred, norm_direc_gt):
     
     return mse(angle_pred, angle_gt)
 
+def angular_loss(norm_direc_pred, norm_direc_gt):
+    
+    link_pair_pred = norm_direc_pred
+    link_pair_gt = norm_direc_gt
+    
+    link_pair_pred_dot = torch.sum(link_pair_pred[0] * link_pair_pred[1], dim=-1)
+    link_pair_gt_dot = torch.sum(link_pair_gt[0] * link_pair_gt[1], dim=-1)
+    
+    # print(link_pair_gt_dot)
+    # print(link_pair_pred_dot)
+    
+    angle_pred = torch.acos(link_pair_pred_dot)
+    angle_gt = torch.acos(link_pair_gt_dot)
+
+    
+#     angle_gt = torch.nan_to_num(angle_gt, nan=0.0)
+#     angle_pred = torch.nan_to_num(angle_pred, nan=0.0)
+    
+    return mse(angle_pred, angle_gt)
+
 def combined_loss(pred, future, mask: Union[torch.Tensor, None]=None):
     
     relative_pred = pred[..., 1:, :]
-    relative_gt = pred[..., 1:, :]
+    relative_gt = future[..., 1:, :]
     
     links_pred = relative_pred[..., point_connection2d, :]
     links_gt = relative_gt[..., point_connection2d, :]
@@ -598,10 +618,34 @@ def combined_loss(pred, future, mask: Union[torch.Tensor, None]=None):
     loss = 0
     loss += angular_loss(norm_direc_pred, norm_direc_gt)
     loss += mse(len_pred, len_gt, sum_dim=[-1, -2])
+    # loss += mpjpev10(pred, future, mask)
+    
+    return loss
+
+def combined_loss(pred, future, mask: Union[torch.Tensor, None]=None):
+    
+    relative_pred = pred[..., 1:, :]
+    relative_gt = pred[..., 1:, :]
+    abs_pose_pred = cvt_absolute_pose(pred[..., 0, :], relative_pred)
+    abs_pose_gt = cvt_absolute_pose(pred[..., 0, :], relative_pred)
+    links_pred = relative_pred[..., point_connection2d, :]
+    links_gt = relative_gt[..., point_connection2d, :]
+
+    direc_pred = relative_pred
+    direc_gt = relative_gt
+
+    len_pred = torch.linalg.norm(direc_pred, ord=2, dim=-1, keepdim=True)
+    len_gt = torch.linalg.norm(direc_gt, ord=2, dim=-1, keepdim=True)
+    
+    norm_direc_pred = direc_pred / (len_pred + 1e-5)
+    norm_direc_gt = direc_gt / (len_gt + 1e-5)
+    
+    loss = 0
+    loss += 0.1*angular_loss(norm_direc_pred, norm_direc_gt)
+    loss += mse(len_pred, len_gt, sum_dim=[-1, -2])
     loss += mpjpev10(pred, future, mask)
     
     return loss
-    
     
 def modified_mpjpe(pred, future):
     

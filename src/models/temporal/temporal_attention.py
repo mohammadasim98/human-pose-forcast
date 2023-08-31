@@ -695,14 +695,7 @@ class GatedRecurrentAttentionUnit(nn.Module):
         self.need_weights = need_weights
         self.average_attn_weights = average_attn_weights
         
-        # MLP block
-        self.ln_2 = norm_layer(hidden_dim)
-        self.mlp = MLPBlock(hidden_dim, mlp_dim, activation=activation) 
-        
-        if use_lstm:
-            self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_lstm_layers, batch_first=True)        
-        
-        self.use_lstm = use_lstm
+
         self.res_ln = norm_layer(hidden_dim)
         self.query = nn.Parameter(torch.randn(1, num_query, hidden_dim))
         self.query_mask = torch.zeros(1, num_query).bool().to("cuda:0")
@@ -716,37 +709,63 @@ class GatedRecurrentAttentionUnit(nn.Module):
         
         self.mlp_xz = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.mlp_xr = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.mlp_hz = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.mlp_hr = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.mlp_hn = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.mlp_an = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.sigmoid = nn.Sigmoid()
         self.tanh = nn.Tanh()
-        
+        self.mlp_mu = nn.Linear(hidden_dim, hidden_dim//2)
+        self.mlp_sigma = nn.Linear(hidden_dim, hidden_dim//2)
+        self.mlp_key = nn.Sequential(
+            nn.Linear(hidden_dim//2, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
+        )
+        self.mlp_out = nn.Linear(hidden_dim, 2)
+    
+    def reparameterize(self, mu: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        """
+        Reparameterization trick to sample from N(mu, var) from
+        N(0,1).
+        :param mu: (Tensor) Mean of the latent Gaussian [B x D]
+        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
+        :return: (Tensor) [B x D]
+        """
+        std = torch.exp(0.5 * sigma)
+        eps = torch.randn_like(std)
+        return eps * std + mu
+    
     def forward(self, inputs: torch.Tensor, mask: Union[torch.Tensor, None]=None, query: Union[torch.Tensor, None]=None):
         """Perform forward pass
 
@@ -799,9 +818,11 @@ class GatedRecurrentAttentionUnit(nn.Module):
             n = self.tanh(self.mlp_an(attended_value) + r * self.mlp_hn(hidden_value))
 
             
-            hidden_value = (1 - z) * n + z * hidden_value
+            hidden_value = z * n + (1-z) * hidden_value
             # query = attended_value
             # Append attended queries
+            
+            
             
             attended_values.append(hidden_value.unsqueeze(1))
             attention_weights.append(att_weights)
@@ -811,8 +832,15 @@ class GatedRecurrentAttentionUnit(nn.Module):
         else:
             attention_weights = None
 
+        mu = self.mlp_mu(hidden_value) 
+        sigma = self.mlp_sigma(hidden_value) 
+        key_value_curr = torch.cat([mu, sigma], dim=-1)
 
-        return hidden_value, torch.cat(attended_values, dim=1), query, attention_weights
+#         new = self.reparameterize(mu, sigma)
+
+#         key_value_curr = self.mlp_key(new)
+        
+        return hidden_value, key_value_curr, torch.cat(attended_values, dim=1), query, mu, sigma, attention_weights
     
     
     
@@ -863,15 +891,8 @@ class VariationalRecurrentAttentionUnit(nn.Module):
         
         self.need_weights = need_weights
         self.average_attn_weights = average_attn_weights
-        
-        # MLP block
-        self.ln_2 = norm_layer(hidden_dim)
-        self.mlp = MLPBlock(hidden_dim, mlp_dim) 
-        
-        if use_lstm:
-            self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_lstm_layers, batch_first=True)        
-        
-        self.use_lstm = use_lstm
+
+
         self.res_ln = norm_layer(hidden_dim)
         self.query = nn.Parameter(torch.randn(1, num_query, hidden_dim))
         self.query_mask = torch.zeros(1, num_query).bool().to("cuda:0")
@@ -885,42 +906,53 @@ class VariationalRecurrentAttentionUnit(nn.Module):
         
         self.mlp_xz = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.mlp_xr = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.mlp_hz = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.mlp_hr = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.mlp_hn = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.mlp_an = nn.Sequential(
             nn.Linear(hidden_dim, mlp_dim),
-            nn.Linear(mlp_dim, hidden_dim)
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
         )
         
         self.sigmoid = nn.Sigmoid()
         self.tanh = nn.Tanh()
         
-        self.mlp_mu = nn.Linear(hidden_dim, 64)
-        self.mlp_sigma = nn.Linear(hidden_dim, 64)
-        self.mlp_out = nn.Linear(64, hidden_dim)
+        self.mlp_mu = nn.Linear(hidden_dim, hidden_dim//2)
+        self.mlp_sigma = nn.Linear(hidden_dim, hidden_dim//2)
+        self.mlp_key = nn.Sequential(
+            nn.Linear(hidden_dim//2, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim),
+            norm_layer(hidden_dim)
+        )
+        self.mlp_out = nn.Linear(hidden_dim, 2)
     
-    def reparameterize(self, mu: Tensor, sigma: Tensor) -> Tensor:
+    def reparameterize(self, mu: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
         """
         Reparameterization trick to sample from N(mu, var) from
         N(0,1).
@@ -932,7 +964,7 @@ class VariationalRecurrentAttentionUnit(nn.Module):
         eps = torch.randn_like(std)
         return eps * std + mu
         
-    def forward(self, inputs: torch.Tensor, mask: Union[torch.Tensor, None]=None, query: Union[torch.Tensor, None]=None, window: int=10):
+    def forward(self, hidden: torch.Tensor, key_value: torch.Tensor, mask: Union[torch.Tensor, None]=None, query: Union[torch.Tensor, None]=None, window: int=10):
         """Perform forward pass
 
         Args:
@@ -943,28 +975,27 @@ class VariationalRecurrentAttentionUnit(nn.Module):
         Returns:
             result (torch.Tensor): A (B, Hw', Nf, E) tensor if reduce is False else a (B, Nf, E) tensor.
         """
-        torch._assert(inputs.dim() == 3, f"Expected Local Features of shape \
-            (batch_size, seq_length, num_feature, hidden_dim) got {inputs.shape}")
-
+        torch._assert(hidden.dim() == 3, f"Expected Local Features of shape \
+            (batch_size, seq_length, num_feature, hidden_dim) got {hidden.shape}")
+        torch._assert(key_value.dim() == 3, f"Expected Local Features of shape \
+            (batch_size, seq_length, num_feature, hidden_dim) got {key_value.shape}")
         
         #######################################################################################
         # TODO: Need to implement a forward method for local backward temporal attention block
-        b,  nf, e = inputs.shape
+        b,  _, _ = hidden.shape
         # Temporal attention on local features
         outputs = []
         attention_weights = []
         # Use oldest feature sequence from history as the first query
-        hidden_value = self.query.expand(b, -1, -1) 
+        hidden_value = hidden
 
-            
-        query = hidden_value
-        hidden_value_mask = self.query_mask.expand(b, -1) 
-        # attended_values.append(query.unsqueeze(1))
-        # query_ln = self.ln_q(query)
-        # inp_cat = torch.cat([hidden_value.unsqueeze(1), inputs], dim=1)
-        key_value = inputs
 
+        key_value = key_value
         att_weights = None
+        mus = []
+        sigmas = []
+        key_values = []
+
         for i in range(0, window):
             # Update key and value
             z = self.sigmoid(self.mlp_xz(key_value) + self.mlp_hz(hidden_value))
@@ -981,24 +1012,33 @@ class VariationalRecurrentAttentionUnit(nn.Module):
             n = self.tanh(self.mlp_an(attended_value) + r * self.mlp_hn(hidden_value))
 
             
-            hidden_value = (1 - z) * n + z * hidden_value
+            hidden_value = z * n + (1-z) * hidden_value
             
             
-            mu = sel.mlp_mu(hidden_value) 
-            sigma = sel.mlp_sigma(hidden_value) 
+            mu = self.mlp_mu(hidden_value) 
+            sigma = self.mlp_sigma(hidden_value) 
             
-            new = reparameterize(mu, sigma)
+#             new = self.reparameterize(mu, sigma)
             
-            key_value = self.mlp_out(new)
-
+#             key_value = self.mlp_key(new)
+#             output = self.mlp_out(key_value)
             
-            outputs.append(key_value.unsqueeze(1))
+            key_value = torch.cat([mu, sigma], dim=-1)
+            
+            key_values.append(key_value.unsqueeze(1))
+            mus.append(mu.unsqueeze(1))
+            sigmas.append(sigma.unsqueeze(1))
             attention_weights.append(att_weights)
+            # outputs.append(output.unsqueeze(1))
             
         if len(attention_weights):
             attention_weights = attention_weights
         else:
             attention_weights = None
-
-
-        return hidden_value, torch.cat(outputs, dim=1), query, attention_weights
+        
+        if len(mus) and len(sigmas):
+            mus = torch.cat(mus, dim=1)
+            sigmas = torch.cat(sigmas, dim=1)
+        # if len(outputs):
+        #     outputs = torch.cat(outputs, dim=1)
+        return hidden_value, torch.cat(key_values, dim=1), query, mus, sigmas, attention_weights
