@@ -4,9 +4,8 @@ import torch.nn as nn
 from typing import Union
 from functools import partial
 
-from models.common.sequential import TemporalMultiInputSequential
-from models.temporal.global_attention import GlobalTemporalAttention
-from models.temporal.local_attention import LocalBackwardTemporalAttention, LocalForwardTemporalAttention
+from models.common.sequential import TemporalMultiInputSequentialV3
+from models.temporal.local_attentionv2 import LocalBackwardTemporalAttention, LocalForwardTemporalAttention, BidirectionalTemporalAttention
 
       
 class TemporalEncoderBlock(nn.Module):
@@ -22,10 +21,11 @@ class TemporalEncoderBlock(nn.Module):
         reduce: bool=False,
         dropout: float=0.0,
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
-        use_global: bool=True,
         need_weights: bool=False,
         average_attn_weights: bool=True,
-        activation=nn.GELU
+        activation=nn.GELU,
+        num_lstm_layers: int=3,
+        use_lstm: bool=False
     ):
         """Initialize Temporal Encoder Block
 
@@ -43,7 +43,7 @@ class TemporalEncoderBlock(nn.Module):
             directions (list): A string of direction "forward" or "backward" 
                 for the temporal attention module
         """
-        torch._assert(direction in ["forward", "backward"], "Invalid direction value")
+        torch._assert(direction in ["forward", "backward", "bidirectional"], "Invalid direction value")
         
         super().__init__()
         self.num_heads = num_heads
@@ -59,7 +59,9 @@ class TemporalEncoderBlock(nn.Module):
             dropout=dropout, 
             need_weights=need_weights,
             average_attn_weights=average_attn_weights,
-            activation=activation
+            activation=activation,
+            use_lstm=use_lstm,
+            num_layers=num_lstm_layers
         )
         
         self.local_backward_attention = LocalBackwardTemporalAttention(
@@ -71,26 +73,30 @@ class TemporalEncoderBlock(nn.Module):
             dropout=dropout, 
             need_weights=need_weights,
             average_attn_weights=average_attn_weights,
-            activation=activation
+            activation=activation,
+            use_lstm=use_lstm,
+            num_layers=num_lstm_layers
 
         )
         
-        if use_global:
-            self.global_attention = GlobalTemporalAttention(
-                num_heads=num_heads, 
-                hidden_dim=hidden_dim,
-                mlp_dim=mlp_dim, 
-                norm_layer=norm_layer,
-                dropout=dropout, 
-                need_weights=need_weights,
-                average_attn_weights=average_attn_weights,
-                activation=activation
+        self.bidirectional_attention = BidirectionalTemporalAttention(
+            num_heads=num_heads, 
+            hidden_dim=hidden_dim,
+            mlp_dim=mlp_dim, 
+            norm_layer=norm_layer,
+            reduce=reduce,
+            dropout=dropout, 
+            need_weights=need_weights,
+            average_attn_weights=average_attn_weights,
+            activation=activation,
+            use_lstm=use_lstm,
+            num_layers=num_lstm_layers
 
-            )
-        
-        self.use_global = use_global
+        )
+        print("Using LSTM: ", use_lstm)
+
                 
-    def forward(self, local_feat: torch.Tensor, global_feat: Union[torch.Tensor, None]=None, mask: Union[torch.Tensor, None]=None):
+    def forward(self, feat: torch.Tensor, mask: Union[torch.Tensor, None]=None, states: Union[tuple, None]=None):
         """Perform forward pass
 
         Args:
@@ -105,38 +111,26 @@ class TemporalEncoderBlock(nn.Module):
             local_result (torch.Tensor): A (B, Nf, E) or (B, Hw', Nf, E) tensor if reduce is False.
             global_result (torch.Tensor) A (B, Hw, E) tensor.
         """
-        torch._assert(local_feat.dim() == 4, f"Expected Local Features of shape \
-            (batch_size, seq_length, num_feature, hidden_dim) got {local_feat.shape}")
+        torch._assert(feat.dim() == 4, f"Expected Local Features of shape \
+            (batch_size, seq_length, num_feature, hidden_dim) got {feat.shape}")
         
         
         ##########################################################################
         # TODO: Need to think about forward-backward or backward-forward methods
         
         if self.direction == "forward":
-            local_result, local_forward_attentions  = self.local_forward_attention(local_feat, mask)
-            attention_weights = local_forward_attentions
+            local_result, states, attention_weights  = self.local_forward_attention(feat, mask, states=states)
             
         elif self.direction == "backward":
-            local_result, local_backward_attentions = self.local_backward_attention(local_feat, mask)
-            attention_weights = local_backward_attentions
-
-        # elif self.direction == "backward-forward":
-        #     local_result = self.local_backward_attention(local_feat)
-        #     local_feat = torch.cat([local_feat[:, 1:, ...], local_result.unsqueeze(1)], dim=1)
-        #     local_result = self.local_forward_attention(local_feat)
-        if self.use_global:
-            torch._assert(
-                global_feat.dim() == 3,    
-                f"Expected Global Features of shape (batch_size, seq_length, hidden_dim) got {global_feat.shape}"
-            )
+            local_result, states, attention_weights = self.local_backward_attention(feat, mask, states=states)
             
-            global_result, global_attentions = self.global_attention(global_feat)
-            
-            return local_result, global_result, [global_attentions, attention_weights]
+        elif self.direction == "bidirectional":
+            local_result, states, attention_weights  = self.bidirectional_attention(feat, mask, forward_states=states, backward_states=states)
 
-        return local_result, [attention_weights]
+
+        return local_result, states, [attention_weights]
         
-class TemporalEncoder(nn.Module):
+class TemporalEncoderV2(nn.Module):
     """ Temporal Encoder for local and global features
     """
     
@@ -148,10 +142,11 @@ class TemporalEncoder(nn.Module):
         directions: list,
         norm_layer = partial(nn.LayerNorm, eps=1e-6),
         dropout: float=0.0,
-        use_global: bool=True,
         need_weights: bool=False,
         average_attn_weights: bool=True,
-        activation=nn.GELU
+        activation=nn.GELU,
+        num_lstm_layers: int=3,
+        use_lstm: bool=False
         ) -> None:
         """Initialize Temporal Encoder
 
@@ -185,17 +180,17 @@ class TemporalEncoder(nn.Module):
                     reduce=True if i == (len(directions) - 1) else False,
                     dropout=dropout,
                     norm_layer=norm_layer,
-                    use_global=use_global,
                     need_weights=need_weights,
                     average_attn_weights=average_attn_weights,
-                    activation=activation
+                    activation=activation,
+                    num_lstm_layers=num_lstm_layers,
+                    use_lstm=use_lstm
                 )
             )
         
-        self.layers = TemporalMultiInputSequential(*layers)
-        self.use_global = use_global
+        self.layers = TemporalMultiInputSequentialV3(*layers)
                 
-    def forward(self, local_feat: torch.Tensor, global_feat: Union[torch.Tensor, None]=None, mask: Union[torch.Tensor, None]=None):
+    def forward(self, feat: torch.Tensor, mask: Union[torch.Tensor, None]=None, states: Union[tuple, None]=None):
         """Perform forward pass
 
         Args:
@@ -210,16 +205,10 @@ class TemporalEncoder(nn.Module):
             local_result (torch.Tensor): A (B, Nf, E) tensor.
             global_result (torch.Tensor) A (B, Hw, E) tensor.
         """
-        torch._assert(local_feat.dim() == 4, f"Expected Local Features of shape \
-            (batch_size, seq_length, num_feature, hidden_dim) got {local_feat.shape}")
+        torch._assert(feat.dim() == 4, f"Expected Local Features of shape \
+            (batch_size, seq_length, num_feature, hidden_dim) got {feat.shape}")
 
 
-        if self.use_global:
-            torch._assert(global_feat.dim() == 3, f"Expected Global Features of shape \
-            (batch_size, seq_length, hidden_dim) got {global_feat.shape}")
-            return self.layers(local_feat, global_feat, mask=mask)
-        
-        else:
-            return self.layers(local_feat, mask=mask)
+        return self.layers(feat, mask=mask, states=states)
 
         

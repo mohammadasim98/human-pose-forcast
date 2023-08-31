@@ -26,7 +26,12 @@ class VIM:
         else:
             pred = prediction
             gt = future
-        
+            
+        if is_pose_norm:
+            pred *= self.img_size
+            gt *= self.img_size
+            
+            
         sum_per_joint = torch.sum((gt - pred) ** 2, dim=-1)
 
         if mask is not None:
@@ -43,14 +48,12 @@ class VIM:
             per_pose_mean = torch.sum(norm_per_joint, dim=-1) / denom
         
         else:
-            norm_per_joint = torch.sqrt(sum_per_joint)
+            norm_per_joint = torch.sqrt(torch.sum(sum_per_joint, dim=-1))
             per_pose_mean = torch.mean(norm_per_joint, dim=-1)
 
         mean = torch.mean(per_pose_mean)
         
-        if is_pose_norm:
-            mean *= self.img_size
-        
+            
         return mean
     
     def __str__(self):

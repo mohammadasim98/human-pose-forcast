@@ -1,0 +1,193 @@
+{
+    "name": "gradient-HPPW3D",
+    "n_gpu": 1,
+
+    "arch": {
+        "type": "HumanPosePredictorModelV2",
+        "args": {
+            "config": {
+                "pose_embedding": {
+                    "pose_sigma": 16,
+                    "root_sigma": 2,
+                    "nfreq": 32
+                },
+                "pose_encoder": {
+                    "num_layers": 3,
+                    "num_heads": 16,
+                    "hidden_dim": 256,
+                    "mlp_dim": 768,
+                    "dropout": 0.001
+                },
+                "pose_decoder": {
+                    "num_layers": 6,
+                    "num_heads": 16,
+                    "hidden_dim": 256,
+                    "dropout": 0.001,
+                    "batch_first": true
+
+                },
+                "temporal_encoder": {
+                    "num_heads": 16,
+                    "hidden_dim": 256,
+                    "mlp_dim": 768,
+                    "dropout": 0.001,
+                    "directions": ["backward", "forward"],
+                    "num_lstm_layers": 1,
+                    "use_lstm": false
+
+                },
+                "image_encoder":{
+                    "image_size": 224, 
+                    "patch_size": 16,  
+                    "num_layers": 3, 
+                    "num_heads": 16,  
+                    "hidden_dim": 256,
+                    "mlp_dim": 768,
+                    "total_layers": 12,
+                    "vit_weights": "saved/models/vit/vit.pth",
+                    "root_path": "/notebooks",
+                    "device": "cuda:0"
+                },
+                "dual_attention": {
+                    "num_heads": 16,
+                    "embed_dim": 256,
+                    "dropout": 0.001,
+                    "batch_first": true
+
+                },
+                "activation": {
+                    "type": "GELU",
+                    "args": {}
+                },
+                "unroll": true,
+                "device": "cuda:0"
+            
+            }
+        }
+    },
+    "arch3d": {
+        "mlps": [256, 512, 256], 
+        "activation": "gelu",
+        "inp_dim": 38,
+        "out_dim": 75,
+        "num_layers": 3
+    },
+    "train_loader": {
+        "type": "ThreeDPWTFRecordDataset",
+        "args":{
+            "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/train.tfrecord", 
+            "n_scenes": 24, 
+            "person_id": 1, 
+            "subsample": 2, 
+            "history_window": 10, 
+            "future_window": 10, 
+            "batch_size": 64, 
+            "resize": [224, 224, 3],
+            "shuffle": true, 
+            "n_workers": 8, 
+            "prefetch_factor": 2,
+            "drop_null": true
+        }
+    },
+    "validation_loader": {
+        "type": "ThreeDPWTFRecordDataset",
+        "args":{
+            "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/validation.tfrecord", 
+            "n_scenes": 12, 
+            "person_id": 1, 
+            "subsample": 2, 
+            "history_window": 10, 
+            "future_window": 10, 
+            "batch_size": 64, 
+            "resize": [224, 224, 3],
+            "shuffle": false, 
+            "n_workers": 8, 
+            "prefetch_factor": 2,
+            "drop_null": true
+        }
+    },
+    "test_loader": {
+        "type": "ThreeDPWTFRecordDataset",
+        "args":{
+            "data_path": "/notebooks/data/3DPWPreprocessedTFRecord/test.tfrecord", 
+            "n_scenes": 24, 
+            "person_id": 1, 
+            "subsample": 2, 
+            "history_window": 10, 
+            "future_window": 10, 
+            "batch_size": 32, 
+            "resize": [224, 224, 3],
+            "shuffle": false, 
+            "n_workers": 8, 
+            "prefetch_factor": 2,
+            "drop_null": true
+        }
+    },
+    "curriculum": {
+        "history_window": 6,
+        "future_window": 4,
+        "max_history_window": 10,
+        "max_future_window": 10,
+        "step":1 ,
+        "duration": 3
+    },
+    "optimizer": {
+        "type": "Adam",
+        "args":{
+            "lr": 0.00001
+        }
+    },
+    "loss": {
+        "type": "mpjpev10",
+        "args": {}
+    } ,
+    "metrics": [
+        {
+            "type": "VIM",
+            "args": {
+                "name": "vim2d",
+                "img_size": 224
+            } 
+        }
+
+    ],
+    "lr_scheduler": {
+        "type": "ReduceLROnPlateau",
+        "args": {
+            "factor": 0.9,
+            "patience": 5,
+            "mode": "min",
+            "verbose": true
+        }
+    },
+    "trainer": {
+        "type": "HPPW3DTrainerV2",
+        "args": {},
+
+        "epochs": 60,
+        "save_dir": "/notebooks/saved/",
+        "save_period": 2,
+        "eval_period": 1,
+        "verbosity": 2,
+        "monitor": "min eval_loss2d",
+        "early_stop": 0
+        
+    },
+    "qsample": {
+        "batch_index": [5, 25, 55, 66, 99],
+        "sequence_index": [2, 25, 31],
+        "period": 1
+    },
+    "use_pose_norm": true,
+    "use_root_relative": true,
+    "use_projection": false,
+    "use_dct": false,
+    "dct_config": {
+        "hdct_n": 15,
+        "fdct_n": 15
+    },
+    "is_teacher_forcing": true,
+    "tensorboard": false,
+    "wandb": true
+
+}

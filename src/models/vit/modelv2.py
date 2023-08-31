@@ -11,7 +11,7 @@ from functools import partial
 from collections import OrderedDict
 from os.path import join as ospj
 
-from models.vit.encoder import Encoder
+from models.vit.encoderv2 import Encoder
 
 
 class VisionTransformer(nn.Module):
@@ -71,32 +71,16 @@ class VisionTransformer(nn.Module):
             activation=activation
         )
         
-        # Need to define it to be able to load the state dictionary.
-        # This head wont be used.
-        heads_layers: OrderedDict[str, nn.Module] = OrderedDict()
-        heads_layers["head"] = nn.Linear(hidden_dim, self.num_classes)
-        self.heads = nn.Sequential(heads_layers)
 
-        # ##############################################################################
-        # # TODO: Need to add two new heads for local and global feature extraction
-        # # ... 
-        # # ...
 
-        # Load Vit weights
-        vit_weights = torch.load(ospj(root_path, vit_weights))
-        self.load_state_dict(vit_weights, strict=True)
         
         del self.encoder.layers[num_layers:]
-        del heads_layers
-        del self.heads
-        # print(patch_size)
         
         self.max_pool = nn.MaxPool2d(kernel_size=[patch_size, patch_size], stride=patch_size)
         self.seq_length = seq_length
         self.global_pool = global_pool
         
         self.device = device
-        # raise NotImplementedError
 
     def _process_padding_mask(self, padding_mask):
         
@@ -166,12 +150,7 @@ class VisionTransformer(nn.Module):
         cls_mask = cls_mask > 0
         key_padding_mask = torch.cat([cls_mask, key_padding_mask], dim=-1)
         results = self.encoder(x, key_padding_mask)
-        # Take out the CLS token (in fact "tokens" because we have a batch)
-        
-        ##################################################################
-        # TODO: Need to call the new head on all outputs including cls
-        # ... 
-        # ...
+
     
         
         local_feat = results # (B, 197, 768)
@@ -183,32 +162,5 @@ class VisionTransformer(nn.Module):
             
         return local_feat, global_feat, key_padding_mask
 
-    
-    def visualize_cls(self, attention_weights, n_h, n_w):
-        r"""
-            Parameters:
-            attention_weights: Tensor(N, S+1, S+1), where N is batch size, S is number of tokens (+1 for CLS token).
-            It assumes that CLS token is the first token in both 2nd and 3rd dimensions
 
-            n_h, n_w: int, original Height and width of the tokenized input (before putting all tokens along each other).
-            Normally S should be equal to n_h * n_w
-
-            Returns:
-            Tensor(N, n_h, n_w, 1): a 2D attention map of the CLS token for each sample.
-        """
-        ######################################
-        # TODO: Maybe required later for viz
-        # ...
-        ######################################
-        
-        # For individual heads
-        attention_weights = attention_weights[:, :, 0, 1:].reshape(-1, 12, n_h, n_w)
-
-        # If to visualize the attention weights averaged over heads
-        # attention_weights = attention_weights[:, :, 0, 1:].reshape(-1, 12, n_h, n_w).sum(dim=1) / 12
-        # attention_weights = attention_weights.squeeze(1)
-
-
-        return attention_weights
-        
         
