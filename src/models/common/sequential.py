@@ -88,3 +88,18 @@ class AttentionMultiInputSequential(nn.Sequential):
 
             
         return query, attentions
+    
+    
+class FusionMultiInputSequential(nn.Sequential):
+    """ A custom nn.Sequential model for multiple inputs and outputs
+    """
+    def forward(self, memory_pose, memory_img, img_mask):
+        attentions = []
+        for i, module in enumerate(self._modules.values()):
+            memory_pose, attention = module(memory_pose, memory_img, img_mask)
+
+            if attention is not None:   
+                attentions.append(attention)
+
+            
+        return memory_pose, attentions

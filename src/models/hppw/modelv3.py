@@ -8,9 +8,10 @@ import rff
 from models.embedding import *
 from models.pose.encoder import PoseEncoderV2
 from models.temporal.encoderv3 import TemporalEncoderV3
-from models.vit.model import VisionTransformer
+from models.vit.modelv2 import VisionTransformer
 from models.embedding.fourier import FourierEncoding, FourierMLPEncoding
 from models.projection.model import LinearProjection
+from models.fusion.model import FusionEncoder
 from models.temporal.temporal_attention import GatedRecurrentAttentionUnit, VariationalRecurrentAttentionUnit
 from models.vit.mlp import MLPBlock 
 
@@ -69,14 +70,14 @@ class HumanPosePredictorModelV3(nn.Module):
         self.pose_embedding_args = config["pose_embedding"]
         # Our method's building blocks
         self.pose_encoder = PoseEncoderV2(**self.pose_encoder_args, activation=nn.Tanh)
-        # self.image_encoder = VisionTransformer(**self.image_encoder_args, activation=activation)
+        self.image_encoder = VisionTransformer(**self.image_encoder_args, activation=activation)
         # print(self.image_encoder_args["patch_size"])
         # for param in self.image_encoder.parameters():
         #     param.requires_grad = False
 
         # self.im_temporal_encoder = TemporalEncoderV3(**self.temporal_encoder_args, activation=activation, num_query=((self.image_encoder_args["image_size"] // self.image_encoder_args["patch_size"])**2 + 1))
         # self.pose_temporal_encoder = TemporalEncoderV3(**self.temporal_encoder_args, activation=nn.Tanh, num_query=15)
-        # self.dual_attention = nn.MultiheadAttention(**config["dual_attention"])
+        self.fusion_encoder = FusionEncoder(**config["fusion_encoder"])
         
         hidden_dim = self.pose_decoder_args["hidden_dim"]
         num_heads = self.pose_decoder_args["num_heads"]
@@ -112,16 +113,16 @@ class HumanPosePredictorModelV3(nn.Module):
         
         self.need_weights = False
         # self.lstm = nn.LSTM(hidden_dim, hidden_dim, num_layers, batch_first=True)
-        # self.img_feat_proj = nn.Linear(self.image_encoder_args["hidden_dim"], self.pose_encoder_args["hidden_dim"])
+        self.img_feat_proj = nn.Linear(self.image_encoder_args["hidden_dim"], self.pose_encoder_args["hidden_dim"])
         
-        # self.img_proj = nn.Linear(self.pose_encoder_args["hidden_dim"] * ((self.image_encoder_args["image_size"] // self.image_encoder_args["patch_size"])**2 + 1), 2 * 15)
+        self.img_proj = nn.Linear(self.pose_encoder_args["hidden_dim"] * ((self.image_encoder_args["image_size"] // self.image_encoder_args["patch_size"])**2 + 1), 2 * 15)
 #         self.pos_seq_emb = PositionalEncoding(self.pose_embedding_args["root_sigma"], 0.0)
 #         self.pos_seq_emb_proj = nn.Linear(self.pose_embedding_args["root_sigma"], self.pose_emb_dim)
         
 #         self.pos_joint_emb = PositionalEncoding(self.pose_embedding_args["pose_sigma"], 0.0)
 #         self.pos_joint_emb_proj = nn.Linear(self.pose_embedding_args["pose_sigma"], self.pose_embedding_args["root_sigma"])
         
-        self.grau1 = GatedRecurrentAttentionUnit(
+        self.grau = GatedRecurrentAttentionUnit(
                 num_heads=16, 
                 hidden_dim=hidden_dim,
                 mlp_dim=768, 
@@ -266,10 +267,12 @@ class HumanPosePredictorModelV3(nn.Module):
         
         # Get local and global temporally encoded features of sequences of images and poses
         # Out Shape: (B, num_patches + 1, E) and (B, history_window, E)
-        memory_temp, _, attention_weights = self.im_temporal_encoder(memory_local, mask=im_mask)
+        attention_weights = None
+        # memory_temp, _, attention_weights = self.im_temporal_encoder(memory_local, mask=im_mask)
         # concatenate along sequence dimension (B, num_patches + history_window + 1, E)
         
-        return memory_temp, im_mask, proj_history_poses, attention_weights
+        return memory_local, im_mask, proj_history_poses, attention_weights
+
     
     def reparameterize(self, mu: torch.Tensor, sigma: torch.Tensor, eps: Union[torch.Tensor, None]=None) -> torch.Tensor:
         """
@@ -283,6 +286,20 @@ class HumanPosePredictorModelV3(nn.Module):
         if eps is None:
             eps = torch.randn_like(std)
         return eps * std + mu
+    
+    def fusion(self, memory_pose, memory_img, img_mask=None):
+        
+        b, n, j, e = memory_pose.shape
+        _, _, p, e = memory_img.shape
+        
+        memory_pose = memory_pose.contiguous().view(-1, j, e)
+        memory_img = memory_img.contiguous().view(-1, p, e)
+        img_mask = img_mask.view(-1, p)
+        memory, dual_attention_weight = self.fusion_encoder(memory_pose, memory_img, img_mask)
+        
+        return memory.contiguous().view(b, n, j, e)
+        
+        
     
     def forward(
         self, 
@@ -343,11 +360,12 @@ class HumanPosePredictorModelV3(nn.Module):
         else:
             poses = history_pose
         image_attentions = None
-        # Get combined* local and global features from sequences of images with padding mask    
-        # memory_img, img_mask, proj_history_poses, image_attentions = self.image_encoding(
-        #     img_seq=img_seq, 
-        #     mask=img_mask
-        # )
+        # Get combined* local and global features from sequences of images with padding mask
+        # B, N, P+1, E
+        memory_img, img_mask, proj_history_poses, image_attentions = self.image_encoding(
+            img_seq=img_seq, 
+            mask=img_mask
+        )
         proj_history_poses = None
         
         
@@ -364,16 +382,19 @@ class HumanPosePredictorModelV3(nn.Module):
         #     poses=prev_result, 
         #     pose_mask=history_pose_mask if history_pose_mask is not None else None
         # )
-        pose_encoding = self.pose_encoding(
+        # B, N, J+1, E
+        memory_pose = self.pose_encoding(
             poses=poses, 
             pose_mask=pose_mask if pose_mask is not None else None
         )
+        
+        pose_encoding = self.fusion(memory_pose[:, :history_window], memory_img, img_mask)
         
         final = []
         mask=None
         dual_attention_weights = None
         # memory_pose, temp_states, pose_attentions = self.pose_temporal_encoder(pose_encoding[:, :history_window], mask=history_pose_mask, states=temp_states)
-        memory_pose1, key_value, memory_poses, query, mu, sigma, pose_attentions = self.grau1(pose_encoding[:, :history_window], mask=history_pose_mask if pose_mask is not None else None, query=None)
+        memory_pose1, key_value, memory_poses, query, mu, sigma, pose_attentions = self.grau(pose_encoding, mask=history_pose_mask if pose_mask is not None else None, query=None)
         # memory_pose2, key_value, memory_poses, query, mu, sigma, pose_attentions = self.grau2(memory_poses, mask=None, query=None)
         hidden, out_dists, query, out_mus, out_sigmas, pose_attentions = self.vrau(hidden=memory_pose1, key_value=key_value, mask=None, query=None)
         

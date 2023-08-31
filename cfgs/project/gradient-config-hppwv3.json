@@ -12,7 +12,7 @@
                     "nfreq": 64
                 },
                 "pose_encoder": {
-                    "num_layers": 1,
+                    "num_layers": 2,
                     "num_heads": 8,
                     "hidden_dim": 256,
                     "mlp_dim": 768,
@@ -41,7 +41,7 @@
                 "image_encoder":{
                     "image_size": 224, 
                     "patch_size": 16,  
-                    "num_layers": 4, 
+                    "num_layers": 2, 
                     "num_heads": 16,  
                     "hidden_dim": 768,
                     "mlp_dim": 3072,
@@ -56,6 +56,13 @@
                     "dropout": 0.001,
                     "batch_first": true
 
+                },
+                "fusion_encoder": {
+                    "num_layers": 2,
+                    "num_heads": 16,
+                    "hidden_dim": 256,
+                    "mlp_dim": 768,
+                    "dropout": 0.001
                 },
                 "activation": {
                     "type": "GELU",
@@ -134,9 +141,10 @@
         "duration": 3
     },
     "optimizer": {
-        "type": "SGD",
+        "type": "Adam",
         "args":{
-            "lr": 0.0001
+            "lr": 0.0001,
+            "amsgrad": true
         }
     },
     "loss": {
