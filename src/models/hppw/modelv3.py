@@ -105,6 +105,7 @@ class HumanPosePredictorModelV3(nn.Module):
         )
         
         self.embed_proj = nn.Linear(2, int(self.pose_emb_dim / (self.pose_embedding_args["nfreq"] * 2)))
+        self.output_proj = nn.Linear(hidden_dim, 2)
         # self.embed_proj = nn.Linear(2, self.pose_embedding_args["pose_sigma"])
         # self.embed_proj = nn.Linear(2, 256)
 
@@ -394,9 +395,9 @@ class HumanPosePredictorModelV3(nn.Module):
         mask=None
         dual_attention_weights = None
         # memory_pose, temp_states, pose_attentions = self.pose_temporal_encoder(pose_encoding[:, :history_window], mask=history_pose_mask, states=temp_states)
-        memory_pose1, key_value, memory_poses, query, mu, sigma, pose_attentions = self.grau(pose_encoding, mask=history_pose_mask if pose_mask is not None else None, query=None)
+        hidden, key_value, memory_poses, query, mu, sigma, pose_attentions = self.grau(pose_encoding, mask=history_pose_mask if pose_mask is not None else None)
         # memory_pose2, key_value, memory_poses, query, mu, sigma, pose_attentions = self.grau2(memory_poses, mask=None, query=None)
-        hidden, out_dists, query, out_mus, out_sigmas, pose_attentions = self.vrau(hidden=memory_pose1, key_value=key_value, mask=None, query=None)
+        hidden, key_value, query, out_mus, out_sigmas, pose_attentions = self.vrau(hidden=hidden, key_value=key_value, mask=None, query=None)
         
         # encoded_poses = memory_pose.unsqueeze(1)
         # pose_atten_list = []
@@ -456,11 +457,11 @@ class HumanPosePredictorModelV3(nn.Module):
         
         # if len(final):
         #     final = torch.cat(final, dim=1)
-        #     final = self.output_proj(final)
+        final = self.output_proj(key_value)
         
         final_mus = self.output_proj_mus(out_mus)
         final_sigmas = self.output_proj_mus(out_sigmas)
-        final = self.reparameterize(final_mus, final_sigmas)
+        # final = self.reparameterize(final_mus, final_sigmas)
         # Autoregressive decoder with "dual" conditioning
         # Currently uses only combined local and global features. Need to modify it later for further evaluation.
         # Out Shape: (B, future_window + 1, J, 2)

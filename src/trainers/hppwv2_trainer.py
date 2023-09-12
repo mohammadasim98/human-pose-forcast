@@ -184,7 +184,7 @@ class HPPW3DTrainerV2(BaseTrainer):
                     weights_list.append((weights[1][j][qsequence_index, ...].unsqueeze(0).unsqueeze(-1).cpu().detach().numpy() * 255).astype(np.uint8))
                     weights_list.append((weights[1][j][qsequence_index, ...].unsqueeze(0).unsqueeze(-1).cpu().detach().numpy() * 255).astype(np.uint8))
                 else:
-
+                    # print(np.sum((weights[1][j][qsequence_index, ...].unsqueeze(0).unsqueeze(-1).cpu().numpy()* 255).astype(np.uint8), axis=-2))
                     weights_list.append((weights[1][j][qsequence_index, ...].unsqueeze(0).unsqueeze(-1).cpu().numpy() * 255).astype(np.uint8))
                     weights_list.append((weights[1][j][qsequence_index, ...].unsqueeze(0).unsqueeze(-1).cpu().numpy() * 255).astype(np.uint8))
         # print((weights[2][0][qsequence_index, 0, 1:].cpu().detach().numpy().reshape(14, 14) * 255).astype(np.uint8))            
@@ -196,7 +196,7 @@ class HPPW3DTrainerV2(BaseTrainer):
         m = self.wandb.Video(np.transpose(maps, (0, 3, 1, 2)), fps=4, format="gif")
         w = None
         if weights is not None:
-            w = self.wandb.Video(np.transpose(np.concatenate(weights_list, axis=0), (0, 3, 1, 2)), fps=4, format="gif")
+            w = self.wandb.Video(np.transpose(np.concatenate(weights_list, axis=0), (0, 3, 2, 1)), fps=4, format="gif")
             # self.wandb.log({f"{name}-attentions_{qsequence_index}_{batch_idx}": weights_list})
         return i, w, m
 

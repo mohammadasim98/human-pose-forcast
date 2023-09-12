@@ -697,6 +697,12 @@ class GatedRecurrentAttentionUnit(nn.Module):
         
 
         self.res_ln = norm_layer(hidden_dim)
+        self.res_mlp = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim),
+            activation()
+        )
+        # Original idea was to have learn query
         self.query = nn.Parameter(torch.randn(1, num_query, hidden_dim))
         self.query_mask = torch.zeros(1, num_query).bool().to("cuda:0")
         
@@ -752,6 +758,11 @@ class GatedRecurrentAttentionUnit(nn.Module):
             nn.Linear(mlp_dim, hidden_dim),
             norm_layer(hidden_dim)
         )
+        
+        # Taken from "Object-Centric Learning with Slot Attention"
+        self.slots_mu = nn.Parameter(nn.init.xavier_uniform_(torch.empty(1, num_query, hidden_dim), gain=nn.init.calculate_gain('relu')))
+        self.slots_log_sigma = nn.Parameter(nn.init.xavier_uniform_(torch.empty(1, num_query, hidden_dim), gain=nn.init.calculate_gain('relu')))
+    
         self.mlp_out = nn.Linear(hidden_dim, 2)
     
     def reparameterize(self, mu: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
@@ -766,7 +777,7 @@ class GatedRecurrentAttentionUnit(nn.Module):
         eps = torch.randn_like(std)
         return eps * std + mu
     
-    def forward(self, inputs: torch.Tensor, mask: Union[torch.Tensor, None]=None, query: Union[torch.Tensor, None]=None):
+    def forward(self, inputs: torch.Tensor, mask: Union[torch.Tensor, None]=None):
         """Perform forward pass
 
         Args:
@@ -788,37 +799,35 @@ class GatedRecurrentAttentionUnit(nn.Module):
         attended_values = []
         attention_weights = []
         # Use oldest feature sequence from history as the first query
-        if query is None:
-            hidden_value = self.query.expand(b, -1, -1) 
-        else:
-            hidden_value = query
-            
-        query = hidden_value
-        hidden_value_mask = self.query_mask.expand(b, -1) 
+        hidden_value = torch.randn(*self.slots_log_sigma.shape).cuda() * torch.exp(self.slots_log_sigma) + self.slots_mu
+        hidden_value = hidden_value.expand(b, -1, -1)
+        # hidden_value_mask = self.query_mask.expand(b, -1) 
         # attended_values.append(query.unsqueeze(1))
         # query_ln = self.ln_q(query)
-        inp_cat = torch.cat([hidden_value.unsqueeze(1), inputs], dim=1)
+        # inp_cat = torch.cat([hidden_value.unsqueeze(1), inputs], dim=1)
+        query = hidden_value
         att_weights = None
         for i in range(0, w):
             # Update key and value
             key_value = inputs[:, i, :, :]
-            key_value_cat = torch.cat([key_value, hidden_value], dim=1)
+            # key_value_cat = torch.cat([key_value, hidden_value], dim=1)
             z = self.sigmoid(self.mlp_xz(key_value) + self.mlp_hz(hidden_value))
             r = self.sigmoid(self.mlp_xr(key_value) + self.mlp_hr(hidden_value))
             
             attended_value, att_weights = self.attention(
                 hidden_value, 
-                key_value_cat, 
-                key_value_cat, 
+                key_value, 
+                key_value, 
                 need_weights=True, 
                 average_attn_weights=True,
-                key_padding_mask=torch.cat([mask[:, i, :], hidden_value_mask], dim=1) if mask is not None and i < mask.shape[1] else None
+                key_padding_mask=mask[:, i, :] if mask is not None and i < mask.shape[1] else None
             )
             
             n = self.tanh(self.mlp_an(attended_value) + r * self.mlp_hn(hidden_value))
 
             
-            hidden_value = z * n + (1-z) * hidden_value
+            value = z * n + (1-z) * hidden_value
+            hidden_value = value + self.res_mlp(self.res_ln(value))
             # query = attended_value
             # Append attended queries
             
@@ -834,11 +843,11 @@ class GatedRecurrentAttentionUnit(nn.Module):
 
         mu = self.mlp_mu(hidden_value) 
         sigma = self.mlp_sigma(hidden_value) 
-        key_value_curr = torch.cat([mu, sigma], dim=-1)
+        # key_value_curr = torch.cat([mu, sigma], dim=-1)
 
-#         new = self.reparameterize(mu, sigma)
+        new = self.reparameterize(mu, sigma)
 
-#         key_value_curr = self.mlp_key(new)
+        key_value_curr = self.mlp_key(new)
         
         return hidden_value, key_value_curr, torch.cat(attended_values, dim=1), query, mu, sigma, attention_weights
     
@@ -894,6 +903,12 @@ class VariationalRecurrentAttentionUnit(nn.Module):
 
 
         self.res_ln = norm_layer(hidden_dim)
+        self.res_mlp = nn.Sequential(
+            nn.Linear(hidden_dim, mlp_dim),
+            nn.Linear(mlp_dim, hidden_dim),
+            activation()
+        )
+        # Original idea was to have learn query
         self.query = nn.Parameter(torch.randn(1, num_query, hidden_dim))
         self.query_mask = torch.zeros(1, num_query).bool().to("cuda:0")
         
@@ -951,6 +966,8 @@ class VariationalRecurrentAttentionUnit(nn.Module):
             norm_layer(hidden_dim)
         )
         self.mlp_out = nn.Linear(hidden_dim, 2)
+    
+
     
     def reparameterize(self, mu: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
         """
@@ -1012,18 +1029,18 @@ class VariationalRecurrentAttentionUnit(nn.Module):
             n = self.tanh(self.mlp_an(attended_value) + r * self.mlp_hn(hidden_value))
 
             
-            hidden_value = z * n + (1-z) * hidden_value
+            value = z * n + (1-z) * hidden_value
+
             
+            mu = self.mlp_mu(value) 
+            sigma = self.mlp_sigma(value)
             
-            mu = self.mlp_mu(hidden_value) 
-            sigma = self.mlp_sigma(hidden_value) 
+            hidden_value = value + self.res_mlp(self.res_ln(value))
+
+            new = self.reparameterize(mu, sigma)
             
-#             new = self.reparameterize(mu, sigma)
-            
-#             key_value = self.mlp_key(new)
-#             output = self.mlp_out(key_value)
-            
-            key_value = torch.cat([mu, sigma], dim=-1)
+            key_value = self.mlp_key(new)            
+            # key_value = torch.cat([mu, sigma], dim=-1)
             
             key_values.append(key_value.unsqueeze(1))
             mus.append(mu.unsqueeze(1))
